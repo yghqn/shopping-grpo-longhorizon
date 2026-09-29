@@ -8,11 +8,11 @@ case "$ARM" in
   baseline)
     MEMORY_ARGS=()
     ;;
-  memory)
+  memory|memory-v2)
     MEMORY_ARGS=(--candidate-memory --candidate-memory-token-budget 1024)
     ;;
   *)
-    echo "Usage: bash scripts/dev_smoke.sh [baseline|memory]" >&2
+    echo "Usage: bash scripts/dev_smoke.sh [baseline|memory|memory-v2]" >&2
     exit 2
     ;;
 esac

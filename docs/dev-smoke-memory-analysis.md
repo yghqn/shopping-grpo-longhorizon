@@ -79,4 +79,6 @@ uses stable labels (`H01`, `H02`, ...) while the trajectory snapshot retains the
 real ASINs. A separate `[CURRENT_ACTION_STATE_V1]` section is refreshed after
 every environment step and lists the only legal ASINs and buttons for the next
 call. This revision has passed the focused memory, rollout and CLI unit tests;
-its effect still requires another paired cloud smoke run.
+its effect still requires another paired cloud smoke run. Use
+`bash scripts/dev_smoke.sh memory-v2` to keep the new trajectories separate
+from the archived v1 output.
