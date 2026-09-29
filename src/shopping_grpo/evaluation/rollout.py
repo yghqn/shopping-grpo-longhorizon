@@ -6,6 +6,7 @@
 
 import json
 import os
+import re
 import time
 import traceback
 from datetime import datetime, timezone
@@ -68,10 +69,18 @@ def _render_current_action_state(observation):
         "当前可打开商品 ASIN: " + (", ".join(asins[:20]) if asins else "无"),
         "当前可点击按钮: " + (", ".join(buttons[:30]) if buttons else "无"),
     ]
+    page_match = re.search(r"(?m)^page_type:\s*([^\s]+)\s*$", observation)
+    page_type = page_match.group(1) if page_match else "unknown"
     normalized = {button.casefold() for button in buttons}
-    if "< prev" in normalized:
+    if page_type == "information_subpage" and "< prev" in normalized:
         lines.append(
             "当前位于信息子页；若继续核验当前商品，下一步优先调用 prev_page 返回商品详情。"
+        )
+    elif page_type == "product_detail" and "< prev" in normalized:
+        lines.append(
+            "当前位于商品详情页；不要把 < prev 误当作信息子页返回键。"
+            "若要比较其他商品，调用一次 prev_page 返回当前搜索结果；"
+            "若要继续核验当前商品，留在本页查看信息、选择规格或购买。"
         )
     return "\n".join(lines)
 

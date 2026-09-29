@@ -7,12 +7,18 @@ ARM="${1:-baseline}"
 case "$ARM" in
   baseline)
     MEMORY_ARGS=()
+    CUMULATIVE_INPUT_TOKEN_BUDGET=0
     ;;
   memory|memory-v2)
     MEMORY_ARGS=(--candidate-memory --candidate-memory-token-budget 1024)
+    CUMULATIVE_INPUT_TOKEN_BUDGET=0
+    ;;
+  memory-v3)
+    MEMORY_ARGS=(--candidate-memory --candidate-memory-token-budget 1024)
+    CUMULATIVE_INPUT_TOKEN_BUDGET=100000
     ;;
   *)
-    echo "Usage: bash scripts/dev_smoke.sh [baseline|memory|memory-v2]" >&2
+    echo "Usage: bash scripts/dev_smoke.sh [baseline|memory|memory-v2|memory-v3]" >&2
     exit 2
     ;;
 esac
@@ -35,5 +41,5 @@ exec "$ROOT/.venv/bin/python" "$ROOT/scripts/evaluate_shop_benchmark.py" \
   --context-window 24576 \
   --context-safety-margin 512 \
   --max-tokens 512 \
-  --cumulative-input-token-budget 0 \
+  --cumulative-input-token-budget "$CUMULATIVE_INPUT_TOKEN_BUDGET" \
   "${MEMORY_ARGS[@]}"

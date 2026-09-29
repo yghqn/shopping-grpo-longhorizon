@@ -82,3 +82,31 @@ call. This revision has passed the focused memory, rollout and CLI unit tests;
 its effect still requires another paired cloud smoke run. Use
 `bash scripts/dev_smoke.sh memory-v2` to keep the new trajectories separate
 from the archived v1 output.
+
+## Memory v2 cloud outcome
+
+The v2 smoke run produced the first strict success on task 19430: the actor
+searched once, opened the gold product, selected the 400g option and purchased
+it in four steps. Task 16715 also reached a partial-alternative purchase.
+
+| Metric | Baseline | Memory v1 | Memory v2 |
+| --- | ---: | ---: | ---: |
+| Strict success | 0/10 | 0/10 | 1/10 |
+| Environment `done` | 1/10 | 4/10 | 6/10 |
+| `invalid_action_limit` | 9/10 | 4/10 | 2/10 |
+| Guard rejections | 40 | 24 | 33 |
+| Cumulative input tokens | 445,848 | 425,995 | 1,276,508 |
+| Context-overflow tasks | 0 | 0 | 2 |
+
+The live-action capsule improved decision quality on two tasks, but a page-state
+classification bug made it over-explore other tasks. The capsule inferred an
+information subpage from the presence of `< prev`, while product-detail pages
+also expose that button. This encouraged premature returns to search results.
+Tasks 4128 and 16263 then repeated open/return or search cycles until their
+single-turn context exceeded the 23,552-token input limit; together they
+consumed 813,739 cumulative input tokens.
+
+The prepared v3 reads the explicit `page_type` before giving navigation advice.
+It also sets a 100,000 cumulative-input-token ceiling for the v3 smoke arm. The
+two successful v2 trajectories used 17,703 and 90,185 cumulative tokens, so this
+ceiling preserves the observed successes while bounding pathological loops.
