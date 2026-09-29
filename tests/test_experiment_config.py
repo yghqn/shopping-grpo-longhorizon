@@ -82,6 +82,21 @@ class ExperimentConfigTest(unittest.TestCase):
         self.assertIn("shopping_trace.enable=false", baseline)
         self.assertIn("shopping_trace.enable=true", treatment)
 
+    def test_budget_memory_arm_enables_memory_and_token_cost_environment(self):
+        registry = load_registry(ROOT / "configs/experiments.json")
+        baseline = resolve_experiment(registry, "grpo_baseline")
+        treatment = resolve_experiment(registry, "grpo_budget_memory_v1")
+
+        _, baseline_env, _ = build_experiment(baseline, root=ROOT)
+        _, treatment_env, _ = build_experiment(treatment, root=ROOT)
+
+        self.assertEqual(baseline_env["SHOPPING_CANDIDATE_MEMORY_ENABLE"], "false")
+        self.assertEqual(baseline_env["SHOPPING_INPUT_TOKEN_SHAPING_ENABLE"], "false")
+        self.assertEqual(treatment_env["SHOPPING_CANDIDATE_MEMORY_ENABLE"], "true")
+        self.assertEqual(treatment_env["SHOPPING_CANDIDATE_MEMORY_TOKEN_BUDGET"], "1024")
+        self.assertEqual(treatment_env["SHOPPING_INPUT_TOKEN_SHAPING_ENABLE"], "true")
+        self.assertEqual(treatment_env["SHOPPING_INPUT_TOKEN_SOFT_THRESHOLD"], "60000")
+
     def test_external_json_can_add_an_experiment_without_code_changes(self):
         source = json.loads((ROOT / "configs/experiments.json").read_text(encoding="utf-8"))
         source["experiments"]["sft_epoch_4"] = {

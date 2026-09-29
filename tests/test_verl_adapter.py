@@ -3,10 +3,11 @@
 import asyncio
 import threading
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from verl.experimental.agent_loop.agent_loop import AgentLoopMetrics, AgentLoopOutput
-from verl.experimental.agent_loop.tool_agent_loop import ToolAgentLoop
+from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop
 
 from shopping_grpo.training.grpo.adapter.agent_loop import ShoppingToolAgentLoop
 from shopping_grpo.training.grpo.adapter.runtime import (
@@ -19,6 +20,8 @@ from shopping_grpo.training.grpo.adapter.runtime import (
 )
 from shopping_grpo.training.grpo.adapter.session import ShopSimulatorSession
 from shopping_grpo.training.grpo.adapter.tools import ShopSimulatorTool
+from shopping_grpo.memory import CandidateMemory
+from shopping_grpo.environment.observation import render_structured_observation
 
 
 def make_tool(name):
@@ -40,6 +43,158 @@ def make_tool(name):
 
 
 class VerlAdapterRuntimeTest(unittest.TestCase):
+    def test_generation_keeps_only_latest_memory_capsule_and_counts_input_tokens(self):
+        async def fake_parent(_loop, agent_data, sampling_params, ignore_termination=False):
+            del sampling_params, ignore_termination
+            return AgentState.GENERATING
+
+        async def run():
+            loop = object.__new__(ShoppingToolAgentLoop)
+            loop.candidate_memory_enable = True
+            loop.candidate_memory_context_start_tokens = [90]
+            loop.candidate_memory_context_end_tokens = [91]
+            loop.context_compaction_enable = False
+            loop.context_window_tokens = 100
+            loop.context_generation_reserve_tokens = 10
+            loop.context_safety_margin_tokens = 5
+            state = make_runtime_state(task_id=2, max_steps=35)
+            token = current_runtime_state.set(state)
+            agent_data = SimpleNamespace(
+                prompt_ids=[10, 20, 90, 1, 91, 21, 30, 90, 2, 91],
+                response_mask=[1, 0, 0, 0, 0, 1, 0, 0, 0],
+                response_logprobs=[],
+                routed_experts=None,
+            )
+            try:
+                with patch.object(
+                    ToolAgentLoop,
+                    "_handle_generating_state",
+                    fake_parent,
+                ):
+                    result = await ShoppingToolAgentLoop._handle_generating_state(
+                        loop,
+                        agent_data,
+                        {"max_tokens": 20},
+                    )
+            finally:
+                current_runtime_state.reset(token)
+            return result, agent_data, state
+
+        result, agent_data, state = asyncio.run(run())
+
+        self.assertEqual(result, AgentState.GENERATING)
+        self.assertEqual(agent_data.prompt_ids, [10, 20, 21, 30, 90, 2, 91])
+        self.assertEqual(state["candidate_memory_contexts_removed"], 1)
+        self.assertEqual(state["candidate_memory_context_tokens_removed"], 3)
+        self.assertEqual(state["cumulative_input_tokens"], 7)
+
+    def test_memory_replacement_rejects_unaligned_routed_experts(self):
+        async def run():
+            loop = object.__new__(ShoppingToolAgentLoop)
+            loop.candidate_memory_enable = True
+            loop.candidate_memory_context_start_tokens = [90]
+            loop.candidate_memory_context_end_tokens = [91]
+            state = make_runtime_state(task_id=2, max_steps=35)
+            token = current_runtime_state.set(state)
+            agent_data = SimpleNamespace(
+                prompt_ids=[10, 20, 90, 1, 91, 30, 90, 2, 91],
+                response_mask=[1, 0, 0, 0, 0, 0, 0, 0],
+                response_logprobs=[],
+                routed_experts=[1],
+            )
+            try:
+                result = await ShoppingToolAgentLoop._handle_generating_state(
+                    loop,
+                    agent_data,
+                    {"max_tokens": 20},
+                )
+            finally:
+                current_runtime_state.reset(token)
+            return result, state
+
+        result, state = asyncio.run(run())
+
+        self.assertEqual(result, AgentState.TERMINATED)
+        self.assertTrue(state["infrastructure_invalid"])
+        self.assertEqual(
+            state["termination_reason"],
+            "candidate_memory_replacement_unsupported_routed_experts",
+        )
+
+    def test_tool_projection_appends_current_memory_capsule(self):
+        observation_state = {
+            "observation_version": "shopping-observation-v2",
+            "page_type": "search_results",
+            "search_available": False,
+            "actions": ["back to search", "35842622441"],
+            "query": "乳胶枕",
+            "normalized_query": "乳胶枕",
+            "page": 1,
+            "total_pages": 1,
+            "total_results": 1,
+            "rank_start": 1,
+            "rank_end": 1,
+            "products": [
+                {
+                    "rank": 1,
+                    "asin": "35842622441",
+                    "title": "泰国乳胶枕",
+                    "brand": "示例品牌",
+                    "category": "枕头",
+                    "price": 20,
+                    "key_attributes": ["高低款"],
+                }
+            ],
+        }
+
+        async def fake_parent(_loop, tool_call, tools_kwargs, agent_data):
+            del tool_call, tools_kwargs, agent_data
+            return SimpleNamespace(text="raw"), 0.0, {"index": 0}
+
+        async def run():
+            loop = object.__new__(ShoppingToolAgentLoop)
+            loop.candidate_memory_enable = True
+            loop.candidate_memory_token_budget = 2048
+            loop.observation_token_budget = 1536
+            loop.observation_detail_token_budget = 4096
+            loop.observation_generic_token_budget = 768
+            loop.observation_search_top_k = 20
+            loop.max_tool_response_length = 20000
+            loop.tokenizer = SimpleNamespace(
+                encode=lambda text, add_special_tokens=False: list(range(len(text)))
+            )
+            state = make_runtime_state(task_id=2, max_steps=35)
+            state["steps"] = [{"index": 0, "tool": "search_products", "parameters": {}}]
+            state["_pending_raw_observation"] = render_structured_observation(
+                observation_state
+            )
+            state["_pending_observation_state"] = observation_state
+            state["_candidate_memory"] = CandidateMemory("乳胶枕")
+            state["candidate_memory_views"] = []
+            token = current_runtime_state.set(state)
+            try:
+                with patch.object(ToolAgentLoop, "_call_tool", fake_parent):
+                    response, _, step = await ShoppingToolAgentLoop._call_tool(
+                        loop,
+                        SimpleNamespace(
+                            name="search_products",
+                            arguments='{"query":"乳胶枕"}',
+                        ),
+                        {},
+                        SimpleNamespace(),
+                    )
+            finally:
+                current_runtime_state.reset(token)
+            return response, step, state
+
+        response, step, state = asyncio.run(run())
+
+        self.assertIn("[SHOPPING_TRAINING_MEMORY_CONTEXT_V1]", response.text)
+        self.assertIn("[END_SHOPPING_TRAINING_MEMORY_CONTEXT_V1]", response.text)
+        self.assertIn("当前可打开商品 ASIN: 35842622441", response.text)
+        self.assertEqual(len(state["candidate_memory_views"]), 1)
+        self.assertEqual(step["candidate_memory_view"]["selected_count"], 1)
+
     def test_agent_loop_preserves_real_verl_metrics_and_exports_shopping_diagnostics(self):
         created = []
 

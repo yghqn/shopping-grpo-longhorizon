@@ -4,7 +4,9 @@
 > 记忆、当前页面动作隔离和累计输入 token 上限见 [PROJECT.md](PROJECT.md)。
 > Qwen3.5-2B 已完成 10-task 方法选择和 40-task 未见开发留出评测：memory-v4
 > 严格成功 2/40（两个对照均为 0/40），相对 baseline 总输入 token 降低 20.0%。
-> 尚未执行本地改造的 SFT、GRPO 或 Final-200 Clean；下文训练结果属于固定上游版本。
+> 候选记忆和累计输入 token 软惩罚已接入 veRL 在线 rollout，并提供命名实验
+> `grpo_budget_memory_v1`；尚未执行本地改造的 SFT、GRPO 或 Final-200 Clean，
+> 下文训练结果属于固定上游版本。
 
 <div align="center">
 
@@ -109,6 +111,11 @@ GRPO 从合并后的 SFT 模型开始。veRL 在 ShopSimulator 中为每个 Prom
 本仓库没有复制 veRL 源码，而是固定安装 `verl==0.8.0`，并保留项目自己的
 AgentLoop、工具适配层、运行时兼容代码和一个带 SHA-256 校验的小补丁。详细配置见
 [GRPO 文档](docs/grpo.md)。
+
+本分支另提供 `grpo_budget_memory_v1` 命名实验：在线 rollout 从公开 observation v2
+更新候选记忆，每次生成前只保留最新记忆胶囊，并对超过 60,000 的累计输入 token
+施加封顶软惩罚。基线配置默认关闭这些开关，便于做同配置对照。该训练入口已经完成
+代码与干跑检查，但尚未真正启动本地改造后的 GRPO 训练。
 
 ### 评估流水线是怎么设计的？
 

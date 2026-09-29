@@ -27,6 +27,19 @@ class ContextWindowStats:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class MarkedContextStats:
+    """Token removals made while retaining the newest replaceable capsule."""
+
+    original_tokens: int
+    final_tokens: int
+    removed_tokens: int
+    removed_spans: int
+
+    def to_dict(self) -> dict[str, int]:
+        return asdict(self)
+
+
 def compact_chat_messages(messages, tools, count_tokens, max_input_tokens):
     """保留固定 prompt，并尽量保留能放入预算的最新完整工具调用组。"""
     if int(max_input_tokens) < 1:
@@ -144,6 +157,72 @@ def compact_token_trajectory(
         removed_tokens=drop_count,
         removed_groups=removed_groups,
         removed_messages=removed_groups * 2,
+    )
+
+
+def retain_latest_marked_context(
+    prompt_ids,
+    response_mask,
+    response_logprobs,
+    *,
+    start_tokens,
+    end_tokens,
+):
+    """Remove older marked tool-response capsules while keeping arrays aligned."""
+    prompt_ids = list(prompt_ids)
+    response_mask = list(response_mask)
+    response_logprobs = list(response_logprobs)
+    start_tokens = list(start_tokens)
+    end_tokens = list(end_tokens)
+    if not start_tokens or not end_tokens:
+        raise ValueError("marked context delimiters cannot be empty")
+    if len(prompt_ids) < len(response_mask):
+        raise ValueError("response_mask cannot be longer than prompt_ids")
+    if response_logprobs and len(response_logprobs) != len(response_mask):
+        raise ValueError("response_logprobs must be empty or aligned with response_mask")
+
+    original_tokens = len(prompt_ids)
+    initial_prompt_length = original_tokens - len(response_mask)
+    spans = []
+    cursor = initial_prompt_length
+    while True:
+        start = _find_subsequence(prompt_ids, start_tokens, cursor)
+        if start is None:
+            break
+        end = _find_subsequence(prompt_ids, end_tokens, start + len(start_tokens))
+        if end is None:
+            raise ContextBudgetError("marked memory context is missing its end delimiter")
+        stop = end + len(end_tokens)
+        spans.append((start, stop))
+        cursor = stop
+
+    removable = spans[:-1]
+    if not removable:
+        return prompt_ids, response_mask, response_logprobs, MarkedContextStats(
+            original_tokens=original_tokens,
+            final_tokens=original_tokens,
+            removed_tokens=0,
+            removed_spans=0,
+        )
+
+    for start, stop in reversed(removable):
+        response_start = start - initial_prompt_length
+        response_stop = stop - initial_prompt_length
+        if response_start < 0:
+            raise ContextBudgetError("marked memory context overlaps the fixed prompt")
+        if any(response_mask[response_start:response_stop]):
+            raise ContextBudgetError("marked memory context overlaps assistant tokens")
+        del prompt_ids[start:stop]
+        del response_mask[response_start:response_stop]
+        if response_logprobs:
+            del response_logprobs[response_start:response_stop]
+
+    final_tokens = len(prompt_ids)
+    return prompt_ids, response_mask, response_logprobs, MarkedContextStats(
+        original_tokens=original_tokens,
+        final_tokens=final_tokens,
+        removed_tokens=original_tokens - final_tokens,
+        removed_spans=len(removable),
     )
 
 
@@ -277,3 +356,11 @@ def _complete_token_group_ends(response_mask):
             index += 1
         group_ends.append(index)
     return group_ends
+
+
+def _find_subsequence(values, needle, start=0):
+    limit = len(values) - len(needle) + 1
+    for index in range(max(int(start), 0), max(limit, 0)):
+        if values[index : index + len(needle)] == needle:
+            return index
+    return None

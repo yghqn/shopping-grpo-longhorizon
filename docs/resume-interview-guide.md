@@ -86,8 +86,8 @@ memory-v4 有 2 个；同时总输入 token 比 baseline 低 20%，非法动作�
    memory-v4，所有任务、解码参数、环境和 Reward 保持一致。
 6. **结果**：memory-v4 新增两个 gold purchase，总 token 降低 20%，Guard 拒绝减少 50，
    且没有 baseline-only 成功回退。
-7. **边界**：40 题单次运行的区间仍宽；下一步应在训练侧接入、做多随机种子，并最终只
-   在方法冻结后运行 Final-200 Clean。
+7. **边界**：40 题单次运行的区间仍宽；训练侧接入已完成但尚未执行，下一步应先做小规模
+   训练冒烟，再做多随机种子，并最终只在方法冻结后运行 Final-200 Clean。
 
 ## 常见追问
 
@@ -122,17 +122,18 @@ Action Guard 拒绝。项目在审计数据中保留真实 ASIN，在模型上�
 ### 为什么没有直接做 GRPO？
 
 先用推理期消融验证记忆表示和成本口径，可以在训练前发现协议错误并降低试错成本。
-训练侧接入尚未完成，因此本分支不把上游 SFT/GRPO 结果算作自己的训练成果。
+训练侧现已接入候选记忆和累计输入 token 软惩罚，但尚未实际启动训练，因此本分支仍不
+把上游 SFT/GRPO 结果算作自己的训练成果。
 
 ### 下一步怎么做？
 
-先冻结当前实现，将记忆状态接入 SFT/GRPO rollout；再使用独立开发任务选择训练配置，
-做多次重复运行，最后在不继续调参的前提下执行一次 Final-200 Clean。
+先在云端验证真实 veRL/Hydra 生命周期并做短程 GRPO 冒烟；确认训练稳定后再做正式训练
+和多次重复运行，最后在不继续调参的前提下执行一次 Final-200 Clean。
 
 ## 不能写进简历的说法
 
 - “成功率显著提升”：当前置信区间包含 0。
-- “完成了 GRPO 训练优化”：本分支尚未执行训练侧改造。
+- “完成了 GRPO 训练优化”：训练代码已接入，但本分支尚未产出自己的 GRPO checkpoint。
 - “Final-200 提升 5%”：40-task 开发留出不是 Final-200。
 - “节省 49.9% token”：这是 10-task 内部 v2/v4 调参比较；对未见 baseline 的可信数字是
   20.0%。
@@ -145,5 +146,8 @@ Action Guard 拒绝。项目在审计数据中保留真实 ASIN，在模型上�
 - 机器可读摘要：[`experiments/budget_memory/summary.json`](../experiments/budget_memory/summary.json)
 - 核心实现：`src/shopping_grpo/memory/candidates.py`
 - 运行时接入：`src/shopping_grpo/evaluation/rollout.py`
+- 训练侧接入：`src/shopping_grpo/training/grpo/adapter/agent_loop.py`
+- 命名训练实验：`configs/experiments.json` 中的 `grpo_budget_memory_v1`
+- 训练接入验证：`scripts/validate_budget_memory_training.sh`
 - 三臂入口：`scripts/dev_holdout.sh`
 - 配对统计：`scripts/compare_budget_memory_runs.py`

@@ -7,6 +7,7 @@ from shopping_grpo.environment.context import (
     VllmChatTokenCounter,
     compact_chat_messages,
     compact_token_trajectory,
+    retain_latest_marked_context,
 )
 
 
@@ -147,6 +148,36 @@ class TokenTrajectoryWindowTest(unittest.TestCase):
                 response_mask=[1, 0],
                 response_logprobs=[-1.0],
                 max_input_tokens=2,
+            )
+
+    def test_replaces_old_memory_capsules_without_touching_tool_groups(self):
+        initial = [10, 11]
+        response = [20, 21, 90, 1, 2, 91, 22, 23, 30, 31, 90, 3, 4, 91]
+        mask = [1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0]
+        logprobs = [float(index) for index in range(len(mask))]
+
+        prompt, kept_mask, kept_logprobs, stats = retain_latest_marked_context(
+            initial + response,
+            mask,
+            logprobs,
+            start_tokens=[90],
+            end_tokens=[91],
+        )
+
+        self.assertEqual(prompt, initial + [20, 21, 22, 23, 30, 31, 90, 3, 4, 91])
+        self.assertEqual(kept_mask, [1, 1, 0, 0, 1, 1, 0, 0, 0, 0])
+        self.assertEqual(kept_logprobs, [0.0, 1.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0])
+        self.assertEqual(stats.removed_spans, 1)
+        self.assertEqual(stats.removed_tokens, 4)
+
+    def test_rejects_unclosed_memory_capsule(self):
+        with self.assertRaisesRegex(ContextBudgetError, "end delimiter"):
+            retain_latest_marked_context(
+                prompt_ids=[10, 20, 90, 1, 2],
+                response_mask=[1, 0, 0, 0],
+                response_logprobs=[],
+                start_tokens=[90],
+                end_tokens=[91],
             )
 
 

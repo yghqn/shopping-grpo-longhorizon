@@ -70,6 +70,7 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         "penalty_overlong",
         "penalty_unfinished",
         "penalty_repeat",
+        "penalty_input_tokens",
         "repeat_action_rate",
         "r_type",
         "r_att",
@@ -158,6 +159,7 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         "penalty/overlong_mean": mean(rewards["penalty_overlong"]),
         "penalty/unfinished_mean": mean(rewards["penalty_unfinished"]),
         "penalty/repeat_mean": mean(rewards["penalty_repeat"]),
+        "penalty/input_tokens_mean": mean(rewards["penalty_input_tokens"]),
         "component/r_type_mean": mean(rewards["r_type"]),
         "component/r_att_mean": mean(rewards["r_att"]),
         "component/r_option_mean": mean(rewards["r_option"]),
@@ -171,6 +173,9 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         "trajectory/infrastructure_invalid_rate": mean(infrastructure_invalid),
         "trajectory/reward_unverifiable_rate": mean(reward_unverifiable),
         "trajectory/sampling_invalid_rate": mean(sampling_invalid),
+        "trajectory/cumulative_input_tokens_mean": mean(
+            [float(info.get("cumulative_input_tokens", 0)) for info in shopping_infos]
+        ),
     }
 
 

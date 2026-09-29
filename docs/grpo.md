@@ -17,6 +17,7 @@ src/shopping_grpo/training/grpo/
   adapter/              AgentLoop and ShopSimulator tools
   compat.py             narrow runtime compatibility hook
   dynamic_sampling.py   bounded non-zero-reward sampling
+  memory_runtime.py     public-observation candidate-memory lifecycle
 ```
 
 `scripts/setup.sh` applies one SHA-256-checked patch needed to connect the
@@ -83,6 +84,45 @@ bash scripts/grpo.sh -- \
   trainer.total_training_steps=20 \
   trainer.save_freq=10
 ```
+
+## Budget-aware candidate-memory arm
+
+`grpo_budget_memory_v1` is the named training arm for this branch. It leaves
+the canonical `grpo_baseline` defaults unchanged and explicitly enables two
+features:
+
+- a 1,024-token candidate-memory view built only from public observation v2;
+- a bounded cost for cumulative actor input above 60,000 tokens.
+
+The online AgentLoop appends the newest memory view to the latest tool response.
+Before the next generation it removes older marker-delimited memory capsules
+while keeping `prompt_ids`, `response_mask` and `response_logprobs` aligned.
+Historical candidates use stable labels; executable ASINs and buttons still
+come only from the current observation. Memory audit records keep counts and a
+content hash without copying prompt text or hidden task fields.
+
+The optional token cost is:
+
+```text
+min(max(cumulative_input_tokens - 60000, 0) / 1000 * 0.001, 0.1)
+```
+
+It is subtracted from the constraint-aware terminal utility. A soft, capped
+cost keeps long but valid trajectories trainable; context-limit failures remain
+separate infrastructure-invalid samples.
+
+Resolve the complete treatment command without starting training:
+
+```bash
+bash scripts/validate_budget_memory_training.sh
+```
+
+This validation imports the real pinned veRL/Hydra runtime, runs the focused
+adapter and reward tests, and then prints the resolved named experiment. It does
+not start Ray, load model weights onto a GPU, or create a training checkpoint.
+
+The branch contains the training integration and dry-run configuration, but no
+local-modification SFT or GRPO checkpoint has been trained yet.
 
 ## Export
 

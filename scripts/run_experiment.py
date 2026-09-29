@@ -112,6 +112,14 @@ def _validate_settings(stage: str, settings: dict) -> None:
         raise ValueError("clip_mode must be symmetric or clip_higher")
     if min(float(settings["kl_coefficient"]), float(settings["length_penalty_per_step"]), float(settings["max_length_penalty"])) < 0:
         raise ValueError("KL and length penalty coefficients must be non-negative")
+    _positive(settings, "candidate_memory_token_budget")
+    if int(settings["input_token_soft_threshold"]) < 0:
+        raise ValueError("input_token_soft_threshold must be non-negative")
+    if min(
+        float(settings["input_token_penalty_per_1k"]),
+        float(settings["max_input_token_penalty"]),
+    ) < 0:
+        raise ValueError("input-token penalty coefficients must be non-negative")
 
 
 def _python(root: Path) -> str:
@@ -174,6 +182,24 @@ def build_experiment(
             "SHOPPING_SOFT_LENGTH_THRESHOLD": str(settings["soft_length_threshold"]),
             "SHOPPING_LENGTH_PENALTY_PER_STEP": str(settings["length_penalty_per_step"]),
             "SHOPPING_MAX_LENGTH_PENALTY": str(settings["max_length_penalty"]),
+            "SHOPPING_CANDIDATE_MEMORY_ENABLE": str(
+                bool(settings["candidate_memory_enabled"])
+            ).lower(),
+            "SHOPPING_CANDIDATE_MEMORY_TOKEN_BUDGET": str(
+                settings["candidate_memory_token_budget"]
+            ),
+            "SHOPPING_INPUT_TOKEN_SHAPING_ENABLE": str(
+                bool(settings["input_token_shaping_enabled"])
+            ).lower(),
+            "SHOPPING_INPUT_TOKEN_SOFT_THRESHOLD": str(
+                settings["input_token_soft_threshold"]
+            ),
+            "SHOPPING_INPUT_TOKEN_PENALTY_PER_1K": str(
+                settings["input_token_penalty_per_1k"]
+            ),
+            "SHOPPING_MAX_INPUT_TOKEN_PENALTY": str(
+                settings["max_input_token_penalty"]
+            ),
         }
     )
     command = [
@@ -224,7 +250,30 @@ def main() -> None:
         train_data=args.train_data,
         validation_data=args.validation_data,
     )
-    print(json.dumps({"experiment": experiment, "command": command, "output": str(output)}, indent=2))
+    shopping_environment = {
+        key: environment[key]
+        for key in (
+            "SHOPPING_LENGTH_SHAPING_ENABLE",
+            "SHOPPING_CANDIDATE_MEMORY_ENABLE",
+            "SHOPPING_CANDIDATE_MEMORY_TOKEN_BUDGET",
+            "SHOPPING_INPUT_TOKEN_SHAPING_ENABLE",
+            "SHOPPING_INPUT_TOKEN_SOFT_THRESHOLD",
+            "SHOPPING_INPUT_TOKEN_PENALTY_PER_1K",
+            "SHOPPING_MAX_INPUT_TOKEN_PENALTY",
+        )
+        if key in environment
+    }
+    print(
+        json.dumps(
+            {
+                "experiment": experiment,
+                "command": command,
+                "shopping_environment": shopping_environment,
+                "output": str(output),
+            },
+            indent=2,
+        )
+    )
     if args.dry_run:
         return
     if output.exists() and any(output.iterdir()):

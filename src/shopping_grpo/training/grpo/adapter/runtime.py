@@ -49,6 +49,9 @@ def make_runtime_state(task_id: int, max_steps: int) -> dict:
         "context_compactions": 0,
         "context_tokens_removed": 0,
         "context_max_input_tokens": 0,
+        "cumulative_input_tokens": 0,
+        "candidate_memory_contexts_removed": 0,
+        "candidate_memory_context_tokens_removed": 0,
         "observation_projection_count": 0,
         "observation_truncated_count": 0,
         "observation_raw_tokens": 0,
@@ -264,6 +267,7 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
             "penalty_overlong": 0.0,
             "penalty_unfinished": 0.0,
             "penalty_repeat": 0.0,
+            "penalty_input_tokens": 0.0,
             "repeat_action_rate": (
                 int(state.get("repeat_action_count", 0))
                 / max(int(state.get("action_attempt_count", 0)), 1)
@@ -297,6 +301,7 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         "penalty_overlong": 0.0,
         "penalty_unfinished": 0.0,
         "penalty_repeat": 0.0,
+        "penalty_input_tokens": 0.0,
         "repeat_action_rate": repeat_action_rate,
         "total": 0.0,
         "terminal_utility": 0.0,
@@ -337,6 +342,38 @@ def apply_reward_length_shaping(
     )
     if shaped["overlong"]:
         shaped["sampling_invalid"] = True
+    return shaped
+
+
+def apply_reward_input_token_shaping(
+    reward: Mapping,
+    state: Mapping,
+    *,
+    enabled: bool,
+    soft_threshold: int = 60000,
+    penalty_per_1k: float = 0.001,
+    max_penalty: float = 0.1,
+) -> dict:
+    """Apply an optional bounded cost to cumulative actor input tokens."""
+    shaped = dict(reward)
+    shaped.setdefault("penalty_input_tokens", 0.0)
+    if not enabled:
+        return shaped
+    threshold = int(soft_threshold)
+    per_1k = float(penalty_per_1k)
+    cap = float(max_penalty)
+    if threshold < 0 or per_1k < 0 or cap < 0:
+        raise ValueError(
+            "input-token shaping threshold and penalties must be non-negative"
+        )
+    cumulative_tokens = int(state.get("cumulative_input_tokens", 0))
+    excess = max(cumulative_tokens - threshold, 0)
+    penalty = min(excess / 1000.0 * per_1k, cap)
+    shaped["penalty_input_tokens"] = float(
+        shaped.get("penalty_input_tokens", 0.0)
+    ) + penalty
+    shaped["total"] = float(shaped["total"]) - penalty
+    shaped["terminal_utility"] = float(shaped["terminal_utility"]) - penalty
     return shaped
 
 

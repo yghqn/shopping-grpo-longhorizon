@@ -630,7 +630,10 @@ class RolloutTest(unittest.TestCase):
                 max_steps=1,
                 env_factory=FakeEnv,
             )
-            rows = [json.loads(line) for line in output.read_text().splitlines()]
+            rows = [
+                json.loads(line)
+                for line in output.read_text(encoding="utf-8").splitlines()
+            ]
 
         self.assertEqual([row["task_id"] for row in rows], [1, 2])
         self.assertEqual(len(written), 1)

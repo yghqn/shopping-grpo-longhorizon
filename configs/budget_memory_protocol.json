@@ -1,5 +1,13 @@
 {
   "status": "holdout_complete",
+  "training_integration": {
+    "status": "implemented_not_executed",
+    "experiment": "grpo_budget_memory_v1",
+    "memory_delivery": "replaceable latest-tool-response capsule",
+    "input_token_soft_threshold": 60000,
+    "input_token_penalty_per_1k": 0.001,
+    "max_input_token_penalty": 0.1
+  },
   "research_question": "Can provenance-preserving candidate memory reduce invalid actions and cumulative inference cost while retaining strict shopping success?",
   "upstream_commit": "449bba2686a6ff07327cb3ea77e5f0f91ebb4239",
   "model": "Qwen/Qwen3.5-2B",

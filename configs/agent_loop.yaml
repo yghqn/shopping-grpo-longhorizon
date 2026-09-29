@@ -19,3 +19,9 @@
   observation_detail_token_budget: 4096
   observation_generic_token_budget: 768
   observation_search_top_k: 20
+  candidate_memory_enable: ${oc.env:SHOPPING_CANDIDATE_MEMORY_ENABLE,false}
+  candidate_memory_token_budget: ${oc.env:SHOPPING_CANDIDATE_MEMORY_TOKEN_BUDGET,1024}
+  reward_input_token_shaping_enable: ${oc.env:SHOPPING_INPUT_TOKEN_SHAPING_ENABLE,false}
+  reward_input_token_soft_threshold: ${oc.env:SHOPPING_INPUT_TOKEN_SOFT_THRESHOLD,60000}
+  reward_input_token_penalty_per_1k: ${oc.env:SHOPPING_INPUT_TOKEN_PENALTY_PER_1K,0.001}
+  reward_input_token_max_penalty: ${oc.env:SHOPPING_MAX_INPUT_TOKEN_PENALTY,0.1}

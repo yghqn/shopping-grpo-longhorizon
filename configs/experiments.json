@@ -27,6 +27,12 @@
       "soft_length_threshold": 20,
       "length_penalty_per_step": 0.01,
       "max_length_penalty": 0.15,
+      "candidate_memory_enabled": false,
+      "candidate_memory_token_budget": 1024,
+      "input_token_shaping_enabled": false,
+      "input_token_soft_threshold": 60000,
+      "input_token_penalty_per_1k": 0.001,
+      "max_input_token_penalty": 0.1,
       "max_environment_steps": 35
     }
   },
@@ -43,6 +49,17 @@
     "grpo_length_penalty_20": {
       "stage": "grpo",
       "overrides": {"length_shaping_enabled": true, "soft_length_threshold": 20}
+    },
+    "grpo_budget_memory_v1": {
+      "stage": "grpo",
+      "overrides": {
+        "candidate_memory_enabled": true,
+        "candidate_memory_token_budget": 1024,
+        "input_token_shaping_enabled": true,
+        "input_token_soft_threshold": 60000,
+        "input_token_penalty_per_1k": 0.001,
+        "max_input_token_penalty": 0.1
+      }
     }
   }
 }

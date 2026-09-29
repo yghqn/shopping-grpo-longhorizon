@@ -53,6 +53,12 @@ class ShopSimulatorSession:
             raise
 
         self.state = make_runtime_state(task_id=task_id, max_steps=self.max_steps)
+        if isinstance(initial, dict):
+            self.state["initial_instruction"] = str(initial.get("instruction") or "")
+            if initial.get("observation_state") is not None:
+                self.state["_initial_observation_state"] = initial[
+                    "observation_state"
+                ]
         if isinstance(initial, dict) and initial.get("_trace_target") is not None:
             private_target = initial["_trace_target"]
             try:

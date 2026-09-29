@@ -164,6 +164,8 @@ class ShopSimulatorTool(BaseTool):
         state["latest_observation"] = observation
         state["latest_observation_raw"] = observation
         state["_pending_raw_observation"] = observation
+        if result.get("observation_state") is not None:
+            state["_pending_observation_state"] = result["observation_state"]
         if len(state["steps"]) >= state["max_steps"]:
             _terminate(state, "max_steps")
             return ToolResponse(text="Error: maximum executed tool steps reached."), 0.0, step
