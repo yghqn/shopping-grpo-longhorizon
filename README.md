@@ -407,6 +407,7 @@ bash scripts/grpo.sh --logger swanlab
 
 ## 文档导航
 
+- [简历表述与面试讲解](docs/resume-interview-guide.md)
 - [数据采集与数据来源](docs/data-collection.md)
 - [LoRA SFT](docs/sft.md)
 - [使用 veRL 进行 GRPO](docs/grpo.md)

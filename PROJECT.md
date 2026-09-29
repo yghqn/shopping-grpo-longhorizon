@@ -18,6 +18,8 @@
   `outputs/cloud-runs/`（该目录不进入 Git）。
 - 未参与调参的剩余 40 条 GRPO validation 已冻结并完成三臂配对评测，数据、协议、
   结果和统计限制见 `docs/dev-holdout-40.md`。
+- 可直接用于简历和面试的项目表述、架构图与追问答案见
+  `docs/resume-interview-guide.md`。
 
 ## 贡献边界
 
