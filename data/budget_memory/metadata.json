@@ -17,7 +17,10 @@
     "sha256": "5c80820f3a0f692bac8b5241c138a1b3e5bef90fa027c8e818acc142e10a7af6",
     "selection": "All GRPO validation tasks not present in the frozen 10-task smoke tuning set",
     "task_ids": [299, 302, 565, 652, 1220, 2898, 3485, 3677, 5293, 7061, 7086, 7341, 8107, 8666, 9316, 10077, 12066, 12703, 13368, 13399, 14141, 14156, 14929, 15432, 15586, 16252, 16272, 16574, 17489, 17563, 17825, 17848, 18534, 18751, 19090, 19606, 20134, 21613, 22823, 23126],
-    "model_execution_completed": false
+    "model_execution_completed": true,
+    "execution_date": "2026-09-30",
+    "result_archive": "outputs/cloud-runs/2026-09-30-dev-holdout-40.tar.gz",
+    "result_archive_sha256": "77d03c926cf913480b20270dc417424b61fc3d8e9f2fd7461fcaca4b80d09d7b"
   },
   "overlap_audit": {
     "smoke_holdout": 0,

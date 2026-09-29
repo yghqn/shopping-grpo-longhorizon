@@ -1,5 +1,5 @@
 {
-  "status": "smoke_complete_holdout_prepared",
+  "status": "holdout_complete",
   "research_question": "Can provenance-preserving candidate memory reduce invalid actions and cumulative inference cost while retaining strict shopping success?",
   "upstream_commit": "449bba2686a6ff07327cb3ea77e5f0f91ebb4239",
   "model": "Qwen/Qwen3.5-2B",
@@ -40,7 +40,21 @@
     "total_context_input_tokens": 640131,
     "development_only": true
   },
+  "holdout_result": {
+    "run_date": "2026-09-30",
+    "fixed_denominator": 40,
+    "baseline": {"strict_successes": 0, "total_context_input_tokens": 2334845, "guard_rejections": 155, "invalid_action_limit": 28},
+    "budget_only": {"strict_successes": 0, "total_context_input_tokens": 2100755, "guard_rejections": 149, "invalid_action_limit": 28, "budget_exhaustions": 3},
+    "memory_v4": {"strict_successes": 2, "strict_success_task_ids": [17825, 19090], "total_context_input_tokens": 1867081, "guard_rejections": 105, "invalid_action_limit": 21, "budget_exhaustions": 3},
+    "memory_v4_vs_baseline": {"strict_success_rate_delta": 0.05, "strict_success_rate_delta_ci95": [0.0, 0.125], "total_context_input_token_delta": -467764, "total_context_input_token_delta_rate": -0.20034049369444223, "guard_rejection_delta": -50},
+    "development_only": true
+  },
   "gpu_provider": "AutoDL",
   "gpu_models_verified": ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 4090 D"],
-  "performance_claims": "Deferred until the unseen 40-task holdout is complete"
+  "performance_claims": {
+    "scope": "One deterministic rollout on 40 unseen development-holdout tasks",
+    "observed": "Memory-v4 achieved 2/40 strict successes versus 0/40 for both controls while using 20.0% fewer total input tokens than baseline",
+    "statistically_significant": false,
+    "limitation": "The paired bootstrap 95% interval for the strict-success-rate delta includes zero; Final-200 Clean was not run"
+  }
 }

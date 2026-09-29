@@ -1,0 +1,69 @@
+{
+  "schema_version": "budget-memory-holdout-summary-v1",
+  "run_date": "2026-09-30",
+  "model": "Qwen/Qwen3.5-2B",
+  "hardware": "NVIDIA GeForce RTX 4090 D 24GB",
+  "benchmark": {
+    "path": "data/budget_memory/dev_holdout_40.jsonl",
+    "sha256": "5c80820f3a0f692bac8b5241c138a1b3e5bef90fa027c8e818acc142e10a7af6",
+    "tasks": 40,
+    "fixed_denominator": true,
+    "unseen_during_method_selection": true
+  },
+  "protocol": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_steps": 35,
+    "context_window": 24576,
+    "candidate_memory_token_budget": 1024,
+    "cumulative_input_token_budget": 100000
+  },
+  "runs": {
+    "baseline": {
+      "strict_successes": 0,
+      "done_tasks": 10,
+      "invalid_action_limit": 28,
+      "budget_exhaustions": 0,
+      "guard_rejections": 155,
+      "total_context_input_tokens": 2334845,
+      "mean_final_reward": -0.1625
+    },
+    "budget_only": {
+      "strict_successes": 0,
+      "done_tasks": 7,
+      "invalid_action_limit": 28,
+      "budget_exhaustions": 3,
+      "guard_rejections": 149,
+      "total_context_input_tokens": 2100755,
+      "mean_final_reward": -0.1137
+    },
+    "memory_v4": {
+      "strict_successes": 2,
+      "strict_success_task_ids": [17825, 19090],
+      "done_tasks": 11,
+      "invalid_action_limit": 21,
+      "budget_exhaustions": 3,
+      "guard_rejections": 105,
+      "total_context_input_tokens": 1867081,
+      "mean_final_reward": -0.0441
+    }
+  },
+  "paired_memory_v4_vs_baseline": {
+    "candidate_only_success_task_ids": [17825, 19090],
+    "reference_only_success_task_ids": [],
+    "strict_success_rate_delta": 0.05,
+    "strict_success_rate_delta_ci95": [0.0, 0.125],
+    "total_context_input_token_delta": -467764,
+    "total_context_input_token_delta_rate": -0.20034049369444223,
+    "guard_rejection_delta": -50
+  },
+  "raw_archive": {
+    "path": "outputs/cloud-runs/2026-09-30-dev-holdout-40.tar.gz",
+    "sha256": "77d03c926cf913480b20270dc417424b61fc3d8e9f2fd7461fcaca4b80d09d7b"
+  },
+  "limitations": [
+    "Single deterministic rollout per task",
+    "Development holdout rather than Final-200 Clean",
+    "Paired bootstrap confidence interval for strict-success delta includes zero"
+  ]
+}
