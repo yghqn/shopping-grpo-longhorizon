@@ -314,12 +314,24 @@ class CandidateMemory:
     def _header_lines(self) -> list[str]:
         return [
             "[SHOPPING_CANDIDATE_MEMORY_V1]",
-            "以下仅是历史证据；可执行动作必须以最新 observation 为准。",
+            "以下仅是历史比较证据，不是当前页面控件。",
+            "历史候选标签和字段都不得直接用于工具参数；下一步只能使用 CURRENT_ACTION_STATE 中列出的目标。",
         ]
 
     def _candidate_blocks(self) -> list[tuple[str, list[str]]]:
         """Rank verified and recent candidates before cheap search-only leads."""
         candidates = self.snapshot()["candidates"]
+        stable_order = sorted(
+            candidates,
+            key=lambda candidate: (
+                candidate["first_seen_step"] if candidate["first_seen_step"] is not None else 10**9,
+                candidate["asin"],
+            ),
+        )
+        labels = {
+            candidate["asin"]: f"H{index:02d}"
+            for index, candidate in enumerate(stable_order, start=1)
+        }
 
         def priority(candidate):
             facts = candidate["facts"]
@@ -343,7 +355,7 @@ class CandidateMemory:
         blocks = []
         for candidate in sorted(candidates, key=priority):
             lines = [
-                f"候选 {candidate['asin']} "
+                f"历史候选 {labels[candidate['asin']]} "
                 f"(seen {candidate['first_seen_step']}-{candidate['last_seen_step']})"
             ]
             for name, values in candidate["facts"].items():

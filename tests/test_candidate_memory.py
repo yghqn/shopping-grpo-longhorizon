@@ -99,17 +99,34 @@ class CandidateMemoryTest(unittest.TestCase):
         with self.assertRaisesRegex(StructuredObservationError, "forbidden"):
             memory.observe(state, step_index=1, tool_name="open_product")
 
-    def test_render_contains_evidence_but_no_action_list(self):
+    def test_render_contains_evidence_without_exposing_actionable_asin(self):
         memory = CandidateMemory("预算 30 元的乳胶枕")
         memory.observe(search_state(), step_index=0, tool_name="search_products")
 
         rendered = memory.render()
 
-        self.assertIn("候选 12345678", rendered)
+        self.assertIn("历史候选 H01", rendered)
+        self.assertNotIn("12345678", rendered)
         self.assertIn("s0:search_products:search_results", rendered)
-        self.assertIn("可执行动作必须以最新 observation 为准", rendered)
+        self.assertIn("不得直接用于工具参数", rendered)
         self.assertNotIn("Buy Now", rendered)
         self.assertNotIn("back to search", rendered)
+
+    def test_prompt_labels_stay_stable_when_later_candidates_arrive(self):
+        memory = CandidateMemory("预算 30 元的乳胶枕")
+        memory.observe(search_state(), step_index=0, tool_name="search_products")
+        later = search_state()
+        later["products"][0]["asin"] = "00000001"
+        later["products"][0]["title"] = "后来发现的乳胶枕"
+        later["actions"] = ["back to search", "00000001"]
+        memory.observe(later, step_index=2, tool_name="search_products")
+
+        rendered = memory.render()
+
+        self.assertIn("历史候选 H01 (seen 0-0)", rendered)
+        self.assertIn("历史候选 H02 (seen 2-2)", rendered)
+        self.assertNotIn("12345678", rendered)
+        self.assertNotIn("00000001", rendered)
 
     def test_budget_prefers_verified_candidate_and_reports_dropped_items(self):
         memory = CandidateMemory("预算 30 元的乳胶枕")

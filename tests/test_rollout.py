@@ -14,6 +14,7 @@ from shopping_grpo.evaluation.rollout import (
     CumulativeInputBudgetError,
     OpenAIChatClient,
     SYSTEM_PROMPT,
+    _render_current_action_state,
     collect_tasks,
     collect_for_task,
     completed_task_attempts,
@@ -240,6 +241,17 @@ def assistant_tool(name, arguments, call_id="call_1"):
 
 
 class RolloutTest(unittest.TestCase):
+    def test_current_action_state_exposes_only_latest_page_targets(self):
+        search_state = _render_current_action_state(search_observation())
+        subpage_state = _render_current_action_state(
+            'details\n\n可点击的按钮: ["< Prev", "Back to Search"]'
+        )
+
+        self.assertIn("当前可打开商品 ASIN: 100000000001", search_state)
+        self.assertIn("当前可点击按钮: back to search, 100000000001", search_state)
+        self.assertIn("当前可打开商品 ASIN: 无", subpage_state)
+        self.assertIn("优先调用 prev_page", subpage_state)
+
     def test_default_prompt_matches_reward_policy(self):
         """默认提示词应表达 Reward v3 的购买优先级和停止门槛。"""
         self.assertIn("单轮购物任务", SYSTEM_PROMPT)
@@ -345,10 +357,17 @@ class RolloutTest(unittest.TestCase):
             system_messages[0]["content"].count("[SHOPPING_CANDIDATE_MEMORY_V1]"),
             1,
         )
+        self.assertEqual(
+            system_messages[0]["content"].count("[CURRENT_ACTION_STATE_V1]"),
+            1,
+        )
         memory_content = system_messages[0]["content"].split(
             "[SHOPPING_CANDIDATE_MEMORY_V1]", 1
         )[1]
-        self.assertNotIn("可点击的按钮", memory_content)
+        self.assertNotIn("100000000001", memory_content)
+        self.assertIn("历史候选 H01", memory_content)
+        self.assertIn("当前可打开商品 ASIN: 无", system_messages[0]["content"])
+        self.assertIn("当前可点击按钮: 无", system_messages[0]["content"])
         self.assertTrue(trajectory["candidate_memory_views"])
         self.assertLessEqual(
             trajectory["candidate_memory_views"][-1]["used_tokens"],

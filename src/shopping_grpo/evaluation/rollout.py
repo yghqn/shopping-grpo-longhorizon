@@ -15,7 +15,12 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-from shopping_grpo.environment.actions import action_guard_tool_message, action_reject_reason
+from shopping_grpo.environment.actions import (
+    action_guard_tool_message,
+    action_reject_reason,
+    clickable_buttons,
+    product_ids,
+)
 from shopping_grpo.environment.context import (
     ContextBudgetError,
     VllmChatTokenCounter,
@@ -50,6 +55,34 @@ SYSTEM_PROMPT = """你是一个购物 Agent，负责在 ShopSimulator 中替用�
 MAX_BLOCKED_TOOL_CALLS = 3
 MODEL_COMPLETION_RETRIES = 2
 MODEL_RETRY_DELAY_SECONDS = 1
+
+
+def _render_current_action_state(observation):
+    """Render the only targets that are legal for the actor's next tool call."""
+    observation = str(observation or "")
+    asins = product_ids(observation)
+    buttons = clickable_buttons(observation)
+    lines = [
+        "[CURRENT_ACTION_STATE_V1]",
+        "这是下一步工具参数的唯一合法来源；历史候选只能用于比较。",
+        "当前可打开商品 ASIN: " + (", ".join(asins[:20]) if asins else "无"),
+        "当前可点击按钮: " + (", ".join(buttons[:30]) if buttons else "无"),
+    ]
+    normalized = {button.casefold() for button in buttons}
+    if "< prev" in normalized:
+        lines.append(
+            "当前位于信息子页；若继续核验当前商品，下一步优先调用 prev_page 返回商品详情。"
+        )
+    return "\n".join(lines)
+
+
+def _compose_memory_system_content(base_content, memory_content, observation):
+    sections = [
+        str(base_content or "").strip(),
+        _render_current_action_state(observation),
+        str(memory_content or "").strip(),
+    ]
+    return "\n\n".join(section for section in sections if section)
 
 
 class CumulativeInputBudgetError(RuntimeError):
@@ -397,10 +430,10 @@ def collect_for_task(
                 memory_message = {"role": "system", "content": ""}
                 messages.insert(0, memory_message)
             memory_message_base_content = str(memory_message.get("content") or "")
-            memory_message["content"] = (
-                f"{memory_message_base_content}\n\n{memory_view.content}"
-                if memory_message_base_content
-                else memory_view.content
+            memory_message["content"] = _compose_memory_system_content(
+                memory_message_base_content,
+                memory_view.content,
+                latest_observation,
             )
             trajectory["candidate_memory"] = candidate_memory.snapshot()
             trajectory["candidate_memory_views"].append(
@@ -504,10 +537,10 @@ def collect_for_task(
                         token_budget=candidate_memory_token_budget,
                         count_tokens=memory_token_counter,
                     )
-                    memory_message["content"] = (
-                        f"{memory_message_base_content}\n\n{memory_view.content}"
-                        if memory_message_base_content
-                        else memory_view.content
+                    memory_message["content"] = _compose_memory_system_content(
+                        memory_message_base_content,
+                        memory_view.content,
+                        step["observation"],
                     )
                     trajectory["candidate_memory"] = candidate_memory.snapshot()
                     trajectory["candidate_memory_views"].append(
