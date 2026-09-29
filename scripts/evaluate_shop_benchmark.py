@@ -49,6 +49,18 @@ def parse_args():
     parser.add_argument("--observation-detail-token-budget", type=int, default=4096)
     parser.add_argument("--observation-generic-token-budget", type=int, default=768)
     parser.add_argument("--observation-search-top-k", type=int, default=20)
+    parser.add_argument(
+        "--candidate-memory",
+        action="store_true",
+        help="把公开 observation 整理为带来源的候选商品记忆；默认关闭。",
+    )
+    parser.add_argument("--candidate-memory-token-budget", type=int, default=1024)
+    parser.add_argument(
+        "--cumulative-input-token-budget",
+        type=int,
+        default=0,
+        help="整条轨迹的累计输入 token 上限；0 表示只记录、不硬限制。",
+    )
     return parser.parse_args()
 
 
@@ -72,6 +84,14 @@ def main():
         raise SystemExit("--context-window 必须大于 --max-tokens 与安全余量之和")
     if args.observation_token_budget < 0:
         raise SystemExit("--observation-token-budget 不能为负数")
+    if args.candidate_memory and args.observation_token_budget == 0:
+        raise SystemExit("--candidate-memory 需要启用模型文本 token 计数")
+    if args.candidate_memory_token_budget < 1:
+        raise SystemExit("--candidate-memory-token-budget 必须为正数")
+    if args.cumulative_input_token_budget < 0:
+        raise SystemExit("--cumulative-input-token-budget 不能为负数")
+    if args.cumulative_input_token_budget and args.context_window == 0:
+        raise SystemExit("累计输入 token 预算需要启用模型 token 计数")
     tasks = load_tasks(args.benchmark)
     client = OpenAIChatClient(
         model=args.model,
@@ -95,6 +115,9 @@ def main():
         output_path=args.output,
         base_url=args.base_url,
         max_steps=args.max_steps,
+        candidate_memory_enable=args.candidate_memory,
+        candidate_memory_token_budget=args.candidate_memory_token_budget,
+        cumulative_input_token_budget=args.cumulative_input_token_budget,
     )
     summary = summarize_trajectories(
         [task["task_id"] for task in tasks], _read_jsonl(args.output)
@@ -114,6 +137,9 @@ def main():
         "observation_detail_token_budget": args.observation_detail_token_budget,
         "observation_generic_token_budget": args.observation_generic_token_budget,
         "observation_search_top_k": args.observation_search_top_k,
+        "candidate_memory": args.candidate_memory,
+        "candidate_memory_token_budget": args.candidate_memory_token_budget,
+        "cumulative_input_token_budget": args.cumulative_input_token_budget,
     }
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

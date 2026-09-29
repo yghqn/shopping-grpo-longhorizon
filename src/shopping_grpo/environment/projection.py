@@ -75,6 +75,14 @@ def project_observation(
     if search_top_k < 1:
         raise ValueError("search_top_k must be positive")
 
+    # Enforce the environment page contract even on the identity fast path.
+    current_product_count = len(product_ids(observation))
+    if _page_type(observation) == "search_results" and current_product_count > search_top_k:
+        raise ObservationProjectionError(
+            f"raw search page has {current_product_count} products, above configured "
+            f"page capacity {search_top_k}"
+        )
+
     raw_tokens = int(count_tokens(observation))
     raw_buttons = clickable_buttons(observation)
     raw_asins = product_ids(observation)

@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/YYHDBL/shopping-grpo-longhorizon",
+  "commit": "449bba2686a6ff07327cb3ea77e5f0f91ebb4239",
+  "embedded_source": {
+    "upstream_repository": "https://github.com/ShopAgent-Team/ShopSimulator",
+    "upstream_base_commit": "51bb26012cee31aea7ac26177c5ffe807026ac07",
+    "source_commit": "9ecba272963960ab4a10e1a781bd05cd7634ce20",
+    "embedded_scope": "current runtime, tests, templates, static assets, and compressed product data",
+    "excluded": [
+      "Git metadata",
+      "virtual environments",
+      "generated indexes",
+      "decompressed product data",
+      "runtime logs and caches",
+      "historical evaluation outputs"
+    ]
+  },
+  "upstream_assets_sha256": {
+    "data/grpo/validation.jsonl": "11e0e15ec9fe6911c7c5b8e8525ad06a0b020367e58461e6ab1baa3cdbe73d61",
+    "data/grpo/train.jsonl": "4e6d441e1a432223741b2968d1622d1e77ab855a7d8fe9275cd7df2bbf5565bf",
+    "data/sft/train.jsonl": "8c3a6ff0033f6ea672af609891e747d60652ddc17e8d3c8eacb19e9d96dd9477",
+    "data/sft/validation.jsonl": "9525cc2fb04a1d8d38ae2db959397da908dde3fea766f580fdcf77d1239533cc",
+    "data/evaluation/tasks.jsonl": "d99112a20ef47534c27a32e4b38229bf048dcc6b06fef2e3e919aac3093662f5",
+    "pyproject.toml": "8b9651716f091a0451119b0e393073920993055d4ba1632e2245b40db2a59f06",
+    "uv.lock": "8b27a78b8a4e40b4fe13665ab825517ae2bf67b2e63d5277ef4f81af44bf8bc3",
+    "configs/grpo.yaml": "924f59eee4d46413f7eb677e5f1cde57f105bd9cf3db1ccd10d5d71a0bd1d419",
+    "configs/experiments.json": "82e18aca5be64848b3e826c28f120bc76f7eb100c8f89ee07b539240f7eb0e7e"
+  },
+  "license_status": "No LICENSE or COPYING file found among upstream tracked files at this commit; redistribution terms not yet established.",
+  "upstream_results_are_our_results": false
+}

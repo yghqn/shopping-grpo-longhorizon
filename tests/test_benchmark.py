@@ -77,6 +77,11 @@ class BenchmarkTest(unittest.TestCase):
         self.assertEqual(projection["truncated_tool_observations"], 1)
         self.assertEqual(projection["guard_rejections_after_truncation"], 1)
         self.assertEqual(projection["max_context_input_tokens"], 17000)
+        self.assertEqual(projection["total_context_input_tokens"], 17000)
+        self.assertEqual(
+            projection["mean_context_input_tokens_per_completed_task"],
+            8500,
+        )
         self.assertEqual(
             projection["success_by_truncation_bucket"]["any"],
             {"tasks": 1, "strict_successes": 1},
@@ -85,6 +90,24 @@ class BenchmarkTest(unittest.TestCase):
             projection["success_by_truncation_bucket"]["none"],
             {"tasks": 1, "strict_successes": 0},
         )
+
+    def test_summary_counts_intentional_cumulative_budget_termination(self):
+        budgeted = _trajectory(
+            10,
+            strict=False,
+            steps=2,
+            status="cumulative_input_budget_exceeded",
+        )
+        budgeted["context_turn_tokens"] = [
+            {"input_tokens": 100, "cumulative_input_tokens": 100},
+            {"input_tokens": 150, "cumulative_input_tokens": 250},
+        ]
+
+        summary = summarize_trajectories([10], [budgeted])
+        projection = summary["context_projection"]
+
+        self.assertEqual(projection["cumulative_input_budget_exhausted_tasks"], 1)
+        self.assertEqual(projection["total_context_input_tokens"], 250)
 
 
 if __name__ == "__main__":  # pragma: no cover

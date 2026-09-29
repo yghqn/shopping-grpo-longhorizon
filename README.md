@@ -1,5 +1,7 @@
 # Shopping GRPO
 
+> **本地改造说明**：当前分支正在开发“预算感知购物 Agent”。新增的评测侧候选证据记忆与累计输入 token 预算见 [PROJECT.md](PROJECT.md)；尚未运行模型、SFT、GRPO 或 Final-200 Clean。下文的训练结果属于固定上游版本，不代表本地改造结果。
+
 <div align="center">
 
 **简体中文** · [English](README.en.md)

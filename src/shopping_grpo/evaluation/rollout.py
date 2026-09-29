@@ -29,6 +29,7 @@ from shopping_grpo.environment.tools import (
     tool_call_to_action,
 )
 from shopping_grpo.environment.observation import render_structured_observation
+from shopping_grpo.memory import CandidateMemory
 
 
 SYSTEM_PROMPT = """你是一个购物 Agent，负责在 ShopSimulator 中替用户完成一次单轮购物任务。
@@ -49,6 +50,10 @@ SYSTEM_PROMPT = """你是一个购物 Agent，负责在 ShopSimulator 中替用�
 MAX_BLOCKED_TOOL_CALLS = 3
 MODEL_COMPLETION_RETRIES = 2
 MODEL_RETRY_DELAY_SECONDS = 1
+
+
+class CumulativeInputBudgetError(RuntimeError):
+    """Raised before a model request would exceed its trajectory input budget."""
 
 
 def rollout_interrupted(signum, frame):
@@ -127,7 +132,21 @@ class OpenAIChatClient:
             self.observation_token_counter = observation_token_counter
         self.last_context_event = None
         self.last_context_tokens = None
+        self.last_cumulative_input_tokens = 0
+        self.cumulative_input_tokens = 0
+        self.cumulative_input_token_budget = None
         self.transport = transport
+
+    def start_trajectory(self, cumulative_input_token_budget=0):
+        """Reset per-trajectory accounting before the first model request."""
+        budget = int(cumulative_input_token_budget or 0)
+        if budget < 0:
+            raise ValueError("cumulative_input_token_budget must be non-negative")
+        if budget and self.context_window is None:
+            raise ValueError("cumulative input budget requires model token counting")
+        self.cumulative_input_tokens = 0
+        self.last_cumulative_input_tokens = 0
+        self.cumulative_input_token_budget = budget or None
 
     def complete(self, messages, tools):
         """请求模型下一轮回复，并在上下文超限时按配置压缩历史。"""
@@ -137,7 +156,7 @@ class OpenAIChatClient:
         if self.context_window is not None:
             input_budget = self.context_window - self.max_tokens - self.context_safety_margin
             original_tokens = int(self.token_counter(messages, tools))
-            self.last_context_tokens = original_tokens
+            actual_tokens = original_tokens
             if original_tokens > input_budget:
                 if not self.context_compaction_enable:
                     raise ContextBudgetError(
@@ -151,6 +170,22 @@ class OpenAIChatClient:
                 )
                 if stats.removed_groups:
                     self.last_context_event = stats.to_dict()
+                actual_tokens = stats.final_tokens
+            self.last_context_tokens = actual_tokens
+            if (
+                self.cumulative_input_token_budget is not None
+                and self.cumulative_input_tokens + actual_tokens
+                > self.cumulative_input_token_budget
+            ):
+                remaining = (
+                    self.cumulative_input_token_budget - self.cumulative_input_tokens
+                )
+                raise CumulativeInputBudgetError(
+                    f"next request needs {actual_tokens} input tokens, "
+                    f"but only {remaining} remain"
+                )
+            self.cumulative_input_tokens += actual_tokens
+            self.last_cumulative_input_tokens = self.cumulative_input_tokens
         if self.responses_api:
             payload = {
                 "model": self.model,
@@ -279,6 +314,9 @@ def collect_for_task(
     max_steps=30,
     tools=None,
     attempt_index=0,
+    candidate_memory_enable=False,
+    candidate_memory_token_budget=1024,
+    cumulative_input_token_budget=0,
 ):
     """执行一个任务并返回完整轨迹；所有异常都会被写入轨迹后再释放环境。"""
     trajectory = {
@@ -293,6 +331,9 @@ def collect_for_task(
         "tool_call_truncations": [],
         "context_compactions": [],
         "context_turn_tokens": [],
+        "candidate_memory_enabled": bool(candidate_memory_enable),
+        "candidate_memory": None,
+        "candidate_memory_views": [],
         "initial_result": {},
         "terminal_result": {},
         "final_reward": 0.0,
@@ -302,6 +343,13 @@ def collect_for_task(
     }
     env = env_factory(base_url=base_url)
     try:
+        start_trajectory = getattr(client, "start_trajectory", None)
+        if start_trajectory is not None:
+            start_trajectory(cumulative_input_token_budget)
+        elif cumulative_input_token_budget:
+            raise ValueError(
+                "cumulative input budget requires a client with trajectory accounting"
+            )
         # reset 建立任务状态；后续每一轮只允许一个工具调用。
         initial = env.reset(task["task_id"])
         if initial.get("observation_state") is not None:
@@ -315,6 +363,45 @@ def collect_for_task(
         trajectory["initial_result"] = initial
         messages = _initial_messages(task, initial)
         trajectory["messages"] = messages
+        candidate_memory = None
+        memory_message = None
+        if candidate_memory_enable:
+            memory_token_counter = getattr(client, "observation_token_counter", None)
+            if memory_token_counter is None:
+                raise ValueError(
+                    "candidate memory requires the model text token counter"
+                )
+            candidate_memory = CandidateMemory(
+                requirement=initial.get("instruction", "")
+            )
+            initial_state = initial.get("observation_state")
+            if initial_state is not None:
+                candidate_memory.observe(
+                    initial_state,
+                    step_index=0,
+                    tool_name="reset",
+                )
+            memory_view = candidate_memory.render_view(
+                token_budget=candidate_memory_token_budget,
+                count_tokens=memory_token_counter,
+            )
+            memory_message = {
+                "role": "system",
+                "content": memory_view.content,
+            }
+            first_non_system = next(
+                (
+                    index
+                    for index, message in enumerate(messages)
+                    if message.get("role") != "system"
+                ),
+                len(messages),
+            )
+            messages.insert(first_non_system, memory_message)
+            trajectory["candidate_memory"] = candidate_memory.snapshot()
+            trajectory["candidate_memory_views"].append(
+                {"step_index": -1, **memory_view.to_dict()}
+            )
         tool_schemas = tools or SHOP_TOOL_SCHEMAS
         consecutive_blocked_calls = 0
         latest_observation_truncated = False
@@ -328,6 +415,9 @@ def collect_for_task(
                     {
                         "step_index": len(trajectory["steps"]),
                         "input_tokens": int(context_tokens),
+                        "cumulative_input_tokens": int(
+                            getattr(client, "last_cumulative_input_tokens", 0)
+                        ),
                     }
                 )
             context_event = getattr(client, "last_context_event", None)
@@ -398,6 +488,23 @@ def collect_for_task(
                     step["observation"] = visible_observation
                     step["projection"] = projection
             trajectory["steps"].append(step)
+            if candidate_memory is not None:
+                observation_state = (step.get("result") or {}).get("observation_state")
+                if observation_state is not None:
+                    candidate_memory.observe(
+                        observation_state,
+                        step_index=step["step_index"],
+                        tool_name=step["tool_name"],
+                    )
+                    memory_view = candidate_memory.render_view(
+                        token_budget=candidate_memory_token_budget,
+                        count_tokens=memory_token_counter,
+                    )
+                    memory_message["content"] = memory_view.content
+                    trajectory["candidate_memory"] = candidate_memory.snapshot()
+                    trajectory["candidate_memory_views"].append(
+                        {"step_index": step["step_index"], **memory_view.to_dict()}
+                    )
             consecutive_blocked_calls = 0
             latest_observation = step["observation"]
             latest_observation_truncated = bool(
@@ -414,6 +521,13 @@ def collect_for_task(
             trajectory["status"] = "max_steps"
         if trajectory["steps"]:
             trajectory["final_reward"] = trajectory["steps"][-1]["reward"]
+    except CumulativeInputBudgetError as exc:
+        trajectory["status"] = "cumulative_input_budget_exceeded"
+        trajectory["error"] = {
+            "type": exc.__class__.__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+        }
     except ToolExecutionError as exc:
         trajectory["steps"].append(exc.step)
         trajectory["status"] = "error"
@@ -458,6 +572,9 @@ def collect_tasks(
     max_steps=30,
     env_factory=ShopAgentEnv,
     attempts_per_task=1,
+    candidate_memory_enable=False,
+    candidate_memory_token_budget=1024,
+    cumulative_input_token_budget=0,
 ):
     attempts_per_task = int(attempts_per_task)
     if attempts_per_task < 1:
@@ -476,6 +593,9 @@ def collect_tasks(
                 base_url=base_url,
                 max_steps=max_steps,
                 attempt_index=attempt_index,
+                candidate_memory_enable=candidate_memory_enable,
+                candidate_memory_token_budget=candidate_memory_token_budget,
+                cumulative_input_token_budget=cumulative_input_token_budget,
             )
             append_jsonl(output_path, [trajectory])
             written.append(trajectory)

@@ -41,6 +41,34 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(args.observation_detail_token_budget, 4096)
         self.assertEqual(args.observation_generic_token_budget, 768)
         self.assertEqual(args.observation_search_top_k, 20)
+        self.assertFalse(args.candidate_memory)
+        self.assertEqual(args.candidate_memory_token_budget, 1024)
+        self.assertEqual(args.cumulative_input_token_budget, 0)
+
+    def test_candidate_memory_is_explicitly_enabled(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "evaluate_shop_benchmark.py",
+                "--benchmark",
+                "data/budget_memory/dev_smoke.jsonl",
+                "--output",
+                "outputs/eval/memory/raw.jsonl",
+                "--summary",
+                "outputs/eval/memory/summary.json",
+                "--model",
+                "shopping-agent",
+                "--llm-base-url",
+                "http://127.0.0.1:8000/v1",
+                "--api-key",
+                "EMPTY",
+                "--candidate-memory",
+            ],
+        ):
+            args = parse_args()
+
+        self.assertTrue(args.candidate_memory)
 
 
 if __name__ == "__main__":  # pragma: no cover

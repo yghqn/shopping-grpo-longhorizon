@@ -332,6 +332,8 @@ def compute_deterministic_metrics(normalized: object) -> dict:
                 for projection in projections
             ),
             "context_compaction_count": len(context.get("compactions") or []),
+            "cumulative_input_budget_exceeded": normalized.get("status")
+            == "cumulative_input_budget_exceeded",
             "input_token_turn_count": len(input_tokens),
             "input_tokens_sum": sum(input_tokens),
             "max_input_tokens": max(input_tokens, default=0),
@@ -350,6 +352,8 @@ def compute_deterministic_metrics(normalized: object) -> dict:
             "release_error_type": release_error_type or None,
             "context_hard_limit": trajectory_error_type
             == "ContextBudgetError",
+            "cumulative_input_budget_limit": trajectory_error_type
+            == "CumulativeInputBudgetError",
             "trajectory_contract_valid": not contract_issues,
             "trajectory_contract_issues": contract_issues,
             "judge_eligible": not infrastructure_invalid,

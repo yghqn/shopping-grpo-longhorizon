@@ -98,6 +98,15 @@ def summarize_trajectories(expected_task_ids, trajectories):
         (item.get("error") or {}).get("type") == "ContextBudgetError"
         for item in by_task.values()
     )
+    cumulative_budget_exhaustions = sum(
+        item.get("status") == "cumulative_input_budget_exceeded"
+        for item in by_task.values()
+    )
+    context_input_tokens = [
+        int(turn.get("input_tokens", 0))
+        for item in by_task.values()
+        for turn in item.get("context_turn_tokens") or []
+    ]
     denominator = len(expected_ids)
     return {
         "expected_tasks": denominator,
@@ -173,14 +182,12 @@ def summarize_trajectories(expected_task_ids, trajectories):
                 else 0.0
             ),
             "context_overflow_tasks": context_overflows,
-            "max_context_input_tokens": max(
-                (
-                    int(turn.get("input_tokens", 0))
-                    for item in by_task.values()
-                    for turn in item.get("context_turn_tokens") or []
-                ),
-                default=0,
+            "cumulative_input_budget_exhausted_tasks": cumulative_budget_exhaustions,
+            "total_context_input_tokens": sum(context_input_tokens),
+            "mean_context_input_tokens_per_completed_task": (
+                sum(context_input_tokens) / len(by_task) if by_task else 0.0
             ),
+            "max_context_input_tokens": max(context_input_tokens, default=0),
             "success_by_truncation_bucket": {
                 "none": {
                     "tasks": len(set(by_task) - truncated_task_ids),

@@ -7,9 +7,11 @@ from urllib.error import URLError
 from unittest.mock import patch
 
 from shopping_grpo.environment.actions import action_guard_tool_message
+from shopping_grpo.environment.observation import render_structured_observation
 from shopping_grpo.environment.client import ShopEnvironmentError
 from shopping_grpo.evaluation.rollout import (
     CollectionInfrastructureError,
+    CumulativeInputBudgetError,
     OpenAIChatClient,
     SYSTEM_PROMPT,
     collect_tasks,
@@ -18,6 +20,23 @@ from shopping_grpo.evaluation.rollout import (
     load_tasks,
     rollout_interrupted,
 )
+
+
+def search_observation():
+    return render_structured_observation({
+        "observation_version": "shopping-observation-v2",
+        "page_type": "search_results",
+        "search_available": False,
+        "actions": ["back to search", "100000000001"],
+        "query": "乳胶枕",
+        "normalized_query": "乳胶枕",
+        "page": 1,
+        "total_pages": 1,
+        "total_results": 1,
+        "rank_start": 1,
+        "rank_end": 1,
+        "products": [{"rank": 1, "asin": "100000000001", "title": "乳胶枕", "price": 20}],
+    })
 
 
 class FakeEnv:
@@ -32,7 +51,7 @@ class FakeEnv:
         self.actions.append(action)
         if action == "search[乳胶枕]":
             return {
-                "instruction": "results [SEP] 100000000001 [SEP] 乳胶枕",
+                "instruction": search_observation(),
                 "reward": 0.0,
                 "done": False,
             }
@@ -53,6 +72,83 @@ class FakeEnv:
 
     def release(self):
         self.released = True
+
+
+class StructuredMemoryEnv(FakeEnv):
+    def reset(self, task_id):
+        return {
+            "env_idx": 0,
+            "instruction": "预算 30 元的乳胶枕",
+            "observation_state": {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "search_home",
+                "search_available": True,
+                "actions": [],
+            },
+        }
+
+    def step(self, action):
+        self.actions.append(action)
+        if action == "search[乳胶枕]":
+            state = {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "search_results",
+                "search_available": False,
+                "actions": ["back to search", "100000000001"],
+                "query": "乳胶枕",
+                "normalized_query": "乳胶枕",
+                "page": 1,
+                "total_pages": 1,
+                "total_results": 1,
+                "rank_start": 1,
+                "rank_end": 1,
+                "products": [
+                    {
+                        "rank": 1,
+                        "asin": "100000000001",
+                        "title": "泰国乳胶枕",
+                        "brand": "示例品牌",
+                        "category": "枕头",
+                        "price": 20,
+                        "key_attributes": ["高款"],
+                    }
+                ],
+            }
+            return {"observation_state": state, "reward": 0.0, "done": False}
+        if action == "click[100000000001]":
+            state = {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "product_detail",
+                "search_available": False,
+                "actions": ["back to search", "Buy Now"],
+                "product": {
+                    "asin": "100000000001",
+                    "title": "泰国乳胶枕",
+                    "brand": "示例品牌",
+                    "category": "枕头",
+                    "price": 20,
+                    "key_attributes": ["高款"],
+                },
+                "selected_price": 25,
+                "selected_options": {"高度": "高款"},
+                "available_options": {"高度": ["低款", "高款"]},
+            }
+            return {"observation_state": state, "reward": 0.0, "done": False}
+        if action == "click[Buy Now]":
+            return {
+                "observation_state": {
+                    "observation_version": "shopping-observation-v2",
+                    "page_type": "terminal",
+                    "search_available": False,
+                    "actions": [],
+                },
+                "reward": 1.0,
+                "done": True,
+                "over": True,
+                "purchase": {"asin": "100000000001"},
+                "reward_detail": {"r_type": 1, "r_att": 1, "r_option": 1, "r_price": 1},
+            }
+        raise AssertionError(action)
 
 
 class FailingEnv(FakeEnv):
@@ -84,7 +180,7 @@ class GuardRecoveryEnv(FakeEnv):
         self.actions.append(action)
         if action == "search[乳胶枕]":
             return {
-                "instruction": "results [SEP] 100000000001 [SEP] 乳胶枕",
+                "instruction": search_observation(),
                 "reward": 0.0,
                 "done": False,
             }
@@ -122,6 +218,7 @@ class MockClient:
     def __init__(self, messages):
         self.messages = list(messages)
         self.requests = []
+        self.observation_token_counter = len
 
     def complete(self, messages, tools):
         self.requests.append({"messages": messages, "tools": tools})
@@ -207,6 +304,54 @@ class RolloutTest(unittest.TestCase):
         self.assertEqual(traj["terminal_result"]["purchase"]["asin"], "A1")
         self.assertTrue(any(message["role"] == "tool" for message in traj["messages"]))
 
+    def test_candidate_memory_is_updated_from_public_structured_observations(self):
+        client = MockClient(
+            [
+                assistant_tool("search_products", {"query": "乳胶枕"}, "call_search"),
+                assistant_tool("open_product", {"asin": "100000000001"}, "call_open"),
+                assistant_tool("buy_now", {}, "call_buy"),
+            ]
+        )
+
+        trajectory = collect_for_task(
+            {"task_id": 7},
+            client=client,
+            env_factory=StructuredMemoryEnv,
+            base_url="http://shop.test",
+            max_steps=4,
+            candidate_memory_enable=True,
+        )
+
+        candidate = trajectory["candidate_memory"]["candidates"][0]
+        memory_messages = [
+            message
+            for message in trajectory["messages"]
+            if str(message.get("content", "")).startswith("[SHOPPING_CANDIDATE_MEMORY_V1]")
+        ]
+        self.assertEqual(trajectory["status"], "done")
+        self.assertTrue(trajectory["candidate_memory_enabled"])
+        self.assertEqual(candidate["asin"], "100000000001")
+        self.assertEqual(
+            [item["value"] for item in candidate["facts"]["price"]],
+            [20, 25],
+        )
+        self.assertEqual(
+            candidate["facts"]["selected_option.高度"][0]["value"],
+            "高款",
+        )
+        self.assertEqual(len(memory_messages), 1)
+        self.assertNotIn("可点击的按钮", memory_messages[0]["content"])
+        self.assertTrue(trajectory["candidate_memory_views"])
+        self.assertLessEqual(
+            trajectory["candidate_memory_views"][-1]["used_tokens"],
+            1024,
+        )
+        self.assertIn("content", trajectory["candidate_memory_views"][-1])
+        self.assertEqual(
+            len(trajectory["candidate_memory_views"][-1]["content_sha256"]),
+            64,
+        )
+
     def test_environment_exposes_finish_without_purchase_to_agent(self):
         class EnvironmentV21(FakeEnv):
             def reset(self, task_id):
@@ -275,7 +420,7 @@ class RolloutTest(unittest.TestCase):
             def step(self, action):
                 self.actions.append(action)
                 if action == "search[乳胶枕]":
-                    return {"instruction": "results [SEP] 100000000001", "reward": 0.0, "done": False}
+                    return {"instruction": search_observation(), "reward": 0.0, "done": False}
                 if action == "click[100000000001]":
                     return {
                         "instruction": 'detail\n\n可点击的按钮: ["满天星", "Description", "Buy Now"]',
@@ -334,7 +479,7 @@ class RolloutTest(unittest.TestCase):
             def step(self, action):
                 self.actions.append(action)
                 if action == "search[乳胶枕]":
-                    return {"instruction": "results [SEP] 100000000001", "reward": 0.0, "done": False}
+                    return {"instruction": search_observation(), "reward": 0.0, "done": False}
                 if action == "click[100000000001]":
                     return {
                         "instruction": 'detail\n\n可点击的按钮: ["满天星", "Buy Now"]',
@@ -767,7 +912,62 @@ class RolloutTest(unittest.TestCase):
         self.assertIn("middle page", str(captured["payload"]["messages"]))
         self.assertIn("latest page", str(captured["payload"]["messages"]))
         self.assertEqual(client.last_context_event["removed_groups"], 1)
+        self.assertEqual(client.last_context_tokens, 6)
         self.assertEqual(messages[3]["content"], "old page")
+
+    def test_cumulative_input_budget_stops_before_over_budget_request(self):
+        requests = []
+
+        def transport(url, payload, headers, timeout):
+            requests.append(payload)
+            return {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
+
+        client = OpenAIChatClient(
+            model="shopping",
+            base_url="http://127.0.0.1:8000/v1",
+            api_key="EMPTY",
+            max_tokens=2,
+            context_window=10,
+            context_safety_margin=1,
+            token_counter=lambda messages, tools: len(messages),
+            transport=transport,
+        )
+        client.start_trajectory(cumulative_input_token_budget=1)
+
+        client.complete([{"role": "user", "content": "first"}], tools=[])
+        with self.assertRaisesRegex(CumulativeInputBudgetError, "only 0 remain"):
+            client.complete([{"role": "user", "content": "second"}], tools=[])
+
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(client.cumulative_input_tokens, 1)
+
+    def test_rollout_classifies_cumulative_budget_termination(self):
+        def transport(url, payload, headers, timeout):
+            raise AssertionError("over-budget request must not be sent")
+
+        client = OpenAIChatClient(
+            model="shopping",
+            base_url="http://127.0.0.1:8000/v1",
+            api_key="EMPTY",
+            max_tokens=2,
+            context_window=10,
+            context_safety_margin=1,
+            token_counter=lambda messages, tools: len(messages),
+            transport=transport,
+        )
+        env = FakeEnv()
+
+        trajectory = collect_for_task(
+            {"task_id": 7},
+            client=client,
+            env_factory=lambda **kwargs: env,
+            base_url="http://shop.test",
+            cumulative_input_token_budget=1,
+        )
+
+        self.assertEqual(trajectory["status"], "cumulative_input_budget_exceeded")
+        self.assertEqual(trajectory["error"]["type"], "CumulativeInputBudgetError")
+        self.assertTrue(env.released)
 
     def test_openai_client_projects_tool_observation_with_serving_tokenizer(self):
         client = OpenAIChatClient(

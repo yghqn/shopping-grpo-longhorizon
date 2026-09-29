@@ -1,0 +1,25 @@
+{
+  "purpose": "Engineering smoke check only; not an unbiased final evaluation",
+  "source": "data/grpo/validation.jsonl",
+  "source_sha256": "11e0e15ec9fe6911c7c5b8e8525ad06a0b020367e58461e6ab1baa3cdbe73d61",
+  "selection": "Sort by numeric task_id, shuffle with Python random.Random(seed), take first count",
+  "seed": 20260929,
+  "count": 10,
+  "path": "data/budget_memory/dev_smoke.jsonl",
+  "sha256": "ae3873ebc1c4fe5a619672543ad07f6fe1063b61780e6b379ae8616df609a62b",
+  "task_ids": [
+    643,
+    18176,
+    4199,
+    16715,
+    4128,
+    2511,
+    20304,
+    19430,
+    2718,
+    16263
+  ],
+  "final_test_overlap": 0,
+  "training_overlap": 0,
+  "model_execution_completed": false
+}

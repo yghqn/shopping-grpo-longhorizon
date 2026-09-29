@@ -1,0 +1,60 @@
+{
+  "status": "evaluation_runtime_available_not_run",
+  "research_question": "Can provenance-preserving candidate memory reduce cumulative inference cost while retaining constraint satisfaction?",
+  "upstream_commit": "449bba2686a6ff07327cb3ea77e5f0f91ebb4239",
+  "development_tasks": "data/grpo/validation.jsonl",
+  "smoke_tasks": "data/budget_memory/dev_smoke.jsonl",
+  "final_tasks": "data/evaluation/tasks.jsonl",
+  "final_sha256": "d99112a20ef47534c27a32e4b38229bf048dcc6b06fef2e3e919aac3093662f5",
+  "candidate_memory_token_budget": 1024,
+  "cumulative_input_token_budget": null,
+  "arms": [
+    {
+      "id": "upstream_default",
+      "status": "upstream_available",
+      "purpose": "Reproduce the pinned evaluation defaults"
+    },
+    {
+      "id": "upstream_compaction",
+      "status": "upstream_available",
+      "purpose": "Existing complete-tool-group context compaction"
+    },
+    {
+      "id": "candidate_memory",
+      "status": "evaluation_available_not_run",
+      "purpose": "Public observed candidate facts with evidence sources and latest-state protection"
+    },
+    {
+      "id": "candidate_memory_cost_training",
+      "status": "deferred",
+      "purpose": "Only after inference ablations and a verified training update"
+    }
+  ],
+  "controlled_variables": [
+    "checkpoint",
+    "task_ids",
+    "seed",
+    "decoding",
+    "tools",
+    "environment",
+    "reward",
+    "observation_projection",
+    "context_window",
+    "max_steps"
+  ],
+  "metrics": [
+    "strict_success_rate",
+    "constraint_satisfaction",
+    "wrong_purchase_rate",
+    "cumulative_input_tokens",
+    "output_tokens",
+    "tool_calls",
+    "latency",
+    "early_termination",
+    "infrastructure_failures"
+  ],
+  "gpu_provider": null,
+  "gpu_model": null,
+  "rental_budget": null,
+  "performance_claims": null
+}
