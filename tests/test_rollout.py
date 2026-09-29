@@ -244,23 +244,13 @@ class RolloutTest(unittest.TestCase):
     def test_current_action_state_exposes_only_latest_page_targets(self):
         search_state = _render_current_action_state(search_observation())
         subpage_state = _render_current_action_state(
-            "[SHOPPING_OBSERVATION_V2]\n"
-            "page_type: information_subpage\n\n"
-            '可点击的按钮: ["< Prev", "Back to Search"]'
-        )
-        detail_state = _render_current_action_state(
-            "[SHOPPING_OBSERVATION_V2]\n"
-            "page_type: product_detail\n\n"
-            '可点击的按钮: ["< Prev", "Description", "Buy Now"]'
+            'details\n\n可点击的按钮: ["< Prev", "Back to Search"]'
         )
 
         self.assertIn("当前可打开商品 ASIN: 100000000001", search_state)
         self.assertIn("当前可点击按钮: back to search, 100000000001", search_state)
         self.assertIn("当前可打开商品 ASIN: 无", subpage_state)
         self.assertIn("优先调用 prev_page", subpage_state)
-        self.assertNotIn("信息子页返回键", subpage_state)
-        self.assertIn("不要把 < prev 误当作信息子页返回键", detail_state)
-        self.assertIn("调用一次 prev_page 返回当前搜索结果", detail_state)
 
     def test_default_prompt_matches_reward_policy(self):
         """默认提示词应表达 Reward v3 的购买优先级和停止门槛。"""

@@ -13,12 +13,12 @@ case "$ARM" in
     MEMORY_ARGS=(--candidate-memory --candidate-memory-token-budget 1024)
     CUMULATIVE_INPUT_TOKEN_BUDGET=0
     ;;
-  memory-v3)
+  memory-v3|memory-v4)
     MEMORY_ARGS=(--candidate-memory --candidate-memory-token-budget 1024)
     CUMULATIVE_INPUT_TOKEN_BUDGET=100000
     ;;
   *)
-    echo "Usage: bash scripts/dev_smoke.sh [baseline|memory|memory-v2|memory-v3]" >&2
+    echo "Usage: bash scripts/dev_smoke.sh [baseline|memory|memory-v2|memory-v3|memory-v4]" >&2
     exit 2
     ;;
 esac
