@@ -15,6 +15,9 @@
 - 首轮云端分析、逐任务诊断和最终 v4 选择见
   `docs/dev-smoke-memory-analysis.md`；原始轨迹已按轮次归档到
   `outputs/cloud-runs/`（该目录不进入 Git）。
+- 未参与调参的剩余 40 条 GRPO validation 已冻结为
+  `data/budget_memory/dev_holdout_40.jsonl`。三臂协议、一键运行和配对统计见
+  `docs/dev-holdout-40.md`。
 
 ## 贡献边界
 
@@ -33,7 +36,9 @@ RTX 4090/4090D、Qwen3.5-2B、temperature 0 下的最终 v4 保留了 v2 首次�
 0。相较无记忆基线，严格成功从 0/10 到 1/10，非法动作终止从 9/10 到 2/10。
 
 这是固定 10 条开发任务上的工程诊断，不能外推为正式成功率结论。正式结论至少需要
-预注册的更大留出集和重复运行。候选记忆及运行路径的 42 个针对性测试已通过；云端
-首次环境检查另有 74 tests、2 subtests 通过。
+预注册的更大留出集和重复运行。下一阶段已冻结 40 条未见 holdout，并将同时评估
+baseline、仅预算上限和 memory v4。候选记忆及运行路径的 42 个针对性测试已通过；云端
+首次环境检查另有 74 tests、2 subtests 通过。加入 holdout 完整性和配对报告检查后，
+本地相关测试集合为 83 tests 通过。
 
 上游当前提交未发现 LICENSE/COPYING 文件。保留来源信息；对外发布代码前需要核实源码与嵌入数据的再分发条款。

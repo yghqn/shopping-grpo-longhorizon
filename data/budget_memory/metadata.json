@@ -1,25 +1,29 @@
 {
-  "purpose": "Engineering smoke check only; not an unbiased final evaluation",
+  "purpose": "Development-only memory and token-budget ablations; not Final-200",
   "source": "data/grpo/validation.jsonl",
   "source_sha256": "11e0e15ec9fe6911c7c5b8e8525ad06a0b020367e58461e6ab1baa3cdbe73d61",
-  "selection": "Sort by numeric task_id, shuffle with Python random.Random(seed), take first count",
-  "seed": 20260929,
-  "count": 10,
-  "path": "data/budget_memory/dev_smoke.jsonl",
-  "sha256": "ae3873ebc1c4fe5a619672543ad07f6fe1063b61780e6b379ae8616df609a62b",
-  "task_ids": [
-    643,
-    18176,
-    4199,
-    16715,
-    4128,
-    2511,
-    20304,
-    19430,
-    2718,
-    16263
-  ],
-  "final_test_overlap": 0,
-  "training_overlap": 0,
-  "model_execution_completed": false
+  "partition": "The 10-task smoke tuning set and unseen 40-task holdout are disjoint and exhaust the 50-task GRPO validation set",
+  "smoke": {
+    "path": "data/budget_memory/dev_smoke.jsonl",
+    "count": 10,
+    "sha256": "ae3873ebc1c4fe5a619672543ad07f6fe1063b61780e6b379ae8616df609a62b",
+    "selection": "Sort by numeric task_id, shuffle with Python random.Random(20260929), take first 10",
+    "task_ids": [643, 18176, 4199, 16715, 4128, 2511, 20304, 19430, 2718, 16263],
+    "model_execution_completed": true
+  },
+  "holdout": {
+    "path": "data/budget_memory/dev_holdout_40.jsonl",
+    "count": 40,
+    "sha256": "5c80820f3a0f692bac8b5241c138a1b3e5bef90fa027c8e818acc142e10a7af6",
+    "selection": "All GRPO validation tasks not present in the frozen 10-task smoke tuning set",
+    "task_ids": [299, 302, 565, 652, 1220, 2898, 3485, 3677, 5293, 7061, 7086, 7341, 8107, 8666, 9316, 10077, 12066, 12703, 13368, 13399, 14141, 14156, 14929, 15432, 15586, 16252, 16272, 16574, 17489, 17563, 17825, 17848, 18534, 18751, 19090, 19606, 20134, 21613, 22823, 23126],
+    "model_execution_completed": false
+  },
+  "overlap_audit": {
+    "smoke_holdout": 0,
+    "holdout_final_test": 0,
+    "holdout_grpo_train": 0,
+    "holdout_sft_train": 0,
+    "holdout_sft_validation": 0
+  }
 }
