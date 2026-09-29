@@ -110,3 +110,46 @@ The prepared v3 reads the explicit `page_type` before giving navigation advice.
 It also sets a 100,000 cumulative-input-token ceiling for the v3 smoke arm. The
 two successful v2 trajectories used 17,703 and 90,185 cumulative tokens, so this
 ceiling preserves the observed successes while bounding pathological loops.
+
+## v3 diagnosis and selected v4
+
+The v3 run removed context overflows and reduced total input to 587,123 tokens,
+but strict success returned to 0/10. The token ceiling did not cause this
+regression: task 19430 abandoned the already selected gold product after 60,357
+tokens because the changed navigation text encouraged more comparison.
+
+The final v4 ablation therefore restores the exact v2 decision prompt and keeps
+only the 100,000-token trajectory guardrail. This isolates the resource control
+from the policy prompt.
+
+| Metric | Baseline | Memory v1 | Memory v2 | Memory v3 | Memory v4 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Strict success | 0/10 | 0/10 | 1/10 | 0/10 | **1/10** |
+| Gold purchase | 0 | 0 | 1 | 0 | **1** |
+| Partial alternative purchase | 0 | 1 | 1 | 0 | **1** |
+| Environment `done` | 1 | 4 | 6 | 4 | **5** |
+| Invalid-action termination | 9 | 4 | 2 | 4 | **2** |
+| Guard rejections | 40 | 24 | 33 | 24 | **23** |
+| Context-overflow tasks | 0 | 0 | 2 | 0 | **0** |
+| Budget-exhausted tasks | 0 | 0 | 0 | 2 | **3** |
+| Cumulative input tokens | 445,848 | 425,995 | 1,276,508 | 587,123 | **640,131** |
+| Wall time | 50.3s | 64.3s | 133.0s | 73.0s | **84.6s** |
+
+V4 retains v2's observed strict and partial purchases while cutting cumulative
+input tokens by 49.9%, guard rejections by 30.3%, and wall time by 36.4%. It is
+the selected development configuration. The three budget-exhausted tasks remain
+counted as failures; the ceiling is a cost and reliability guardrail, not a way
+to improve the success denominator.
+
+Raw cloud archives and checksums:
+
+| Run | Archive | SHA256 |
+| --- | --- | --- |
+| Baseline + v1 | `2026-09-29-dev-smoke.tar.gz` | `47253d9826753fb00066ccd636075d577bf92e335b6ee11738f7ce1be868e307` |
+| v2 | `2026-09-29-memory-v2.tar.gz` | `40f35cbdf4d7b9dd1cf6eaac3fb9637e9840e538cdbfc13fb9ed929dae79ce48` |
+| v3 | `2026-09-29-memory-v3.tar.gz` | `379f2de470739bfe16f8702af7fe54dc9d3c9f3bb373456494aa21cfc0e70a6` |
+| v4 | `2026-09-29-memory-v4.tar.gz` | `339b19a5044ef0c22952aaa5cc7682b18643fe62a21e8f9f46d8b0239ac6675c` |
+
+These are small deterministic development runs. The defensible claim is that
+v4 preserved the observed v2 success while bounding pathological token spend;
+the 10% strict-success figure is not a formal benchmark estimate.

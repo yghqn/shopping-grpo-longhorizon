@@ -1,6 +1,9 @@
 # Shopping GRPO
 
-> **本地改造说明**：当前分支正在开发“预算感知购物 Agent”。新增的评测侧候选证据记忆与累计输入 token 预算见 [PROJECT.md](PROJECT.md)；尚未运行模型、SFT、GRPO 或 Final-200 Clean。下文的训练结果属于固定上游版本，不代表本地改造结果。
+> **本地改造说明**：当前分支正在开发“预算感知购物 Agent”。新增的可追溯候选
+> 记忆、当前页面动作隔离和累计输入 token 上限见 [PROJECT.md](PROJECT.md)。
+> 已完成 Qwen3.5-2B 的 10-task 开发集基线与消融，尚未执行本地改造的 SFT、GRPO
+> 或 Final-200 Clean；下文训练结果属于固定上游版本，不代表本地改造结果。
 
 <div align="center">
 
