@@ -11,6 +11,8 @@ if [[ ! -x "$ROOT/.venv/bin/vllm" ]]; then
   exit 1
 fi
 
+export PATH="$ROOT/.venv/bin:$PATH"
+
 exec "$ROOT/.venv/bin/vllm" serve "$MODEL" \
   --served-model-name "$SERVED_MODEL_NAME" \
   --port "$LLM_PORT" \

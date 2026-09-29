@@ -48,9 +48,11 @@ source /etc/network_turbo
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 uv python install 3.10 3.12
-bash scripts/setup.sh
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+bash scripts/setup.sh
 ```
+
+AutoDL 的学术加速用于 GitHub 和 Hugging Face；安装器与 Python 下载完成后先关闭代理，避免 PyPI 大包走慢速线路。模型下载时再单独开启。
 
 安装会创建主项目 Python 3.12 环境和隔离的 ShopSimulator Python 3.10 环境。基础镜像里的 PyTorch 只是启动环境；项目最终使用 `pyproject.toml` 固定的依赖版本。
 
@@ -85,6 +87,8 @@ cd /root/autodl-tmp/budget-aware-shopping-agent
 export HF_HOME=/root/autodl-tmp/cache/huggingface
 bash scripts/serve_model.sh Qwen/Qwen3.5-2B
 ```
+
+启动脚本会把项目虚拟环境加入 `PATH`，以便 FlashInfer 首次 JIT 编译时找到随 GRPO 依赖安装的 `ninja`。
 
 终端 3 确认两个服务就绪后运行 10 条无记忆基线：
 

@@ -365,6 +365,7 @@ def collect_for_task(
         trajectory["messages"] = messages
         candidate_memory = None
         memory_message = None
+        memory_message_base_content = ""
         if candidate_memory_enable:
             memory_token_counter = getattr(client, "observation_token_counter", None)
             if memory_token_counter is None:
@@ -385,19 +386,22 @@ def collect_for_task(
                 token_budget=candidate_memory_token_budget,
                 count_tokens=memory_token_counter,
             )
-            memory_message = {
-                "role": "system",
-                "content": memory_view.content,
-            }
-            first_non_system = next(
-                (
-                    index
-                    for index, message in enumerate(messages)
-                    if message.get("role") != "system"
-                ),
-                len(messages),
+            # Qwen's chat template accepts one leading system message. Keep the
+            # dynamic memory in that message instead of inserting a second one,
+            # which makes vLLM's /tokenize endpoint reject the conversation.
+            memory_message = next(
+                (message for message in messages if message.get("role") == "system"),
+                None,
             )
-            messages.insert(first_non_system, memory_message)
+            if memory_message is None:
+                memory_message = {"role": "system", "content": ""}
+                messages.insert(0, memory_message)
+            memory_message_base_content = str(memory_message.get("content") or "")
+            memory_message["content"] = (
+                f"{memory_message_base_content}\n\n{memory_view.content}"
+                if memory_message_base_content
+                else memory_view.content
+            )
             trajectory["candidate_memory"] = candidate_memory.snapshot()
             trajectory["candidate_memory_views"].append(
                 {"step_index": -1, **memory_view.to_dict()}
@@ -500,7 +504,11 @@ def collect_for_task(
                         token_budget=candidate_memory_token_budget,
                         count_tokens=memory_token_counter,
                     )
-                    memory_message["content"] = memory_view.content
+                    memory_message["content"] = (
+                        f"{memory_message_base_content}\n\n{memory_view.content}"
+                        if memory_message_base_content
+                        else memory_view.content
+                    )
                     trajectory["candidate_memory"] = candidate_memory.snapshot()
                     trajectory["candidate_memory_views"].append(
                         {"step_index": step["step_index"], **memory_view.to_dict()}

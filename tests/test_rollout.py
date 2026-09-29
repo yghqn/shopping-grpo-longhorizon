@@ -323,10 +323,10 @@ class RolloutTest(unittest.TestCase):
         )
 
         candidate = trajectory["candidate_memory"]["candidates"][0]
-        memory_messages = [
+        system_messages = [
             message
             for message in trajectory["messages"]
-            if str(message.get("content", "")).startswith("[SHOPPING_CANDIDATE_MEMORY_V1]")
+            if message.get("role") == "system"
         ]
         self.assertEqual(trajectory["status"], "done")
         self.assertTrue(trajectory["candidate_memory_enabled"])
@@ -339,8 +339,16 @@ class RolloutTest(unittest.TestCase):
             candidate["facts"]["selected_option.高度"][0]["value"],
             "高款",
         )
-        self.assertEqual(len(memory_messages), 1)
-        self.assertNotIn("可点击的按钮", memory_messages[0]["content"])
+        self.assertEqual(len(system_messages), 1)
+        self.assertTrue(system_messages[0]["content"].startswith(SYSTEM_PROMPT))
+        self.assertEqual(
+            system_messages[0]["content"].count("[SHOPPING_CANDIDATE_MEMORY_V1]"),
+            1,
+        )
+        memory_content = system_messages[0]["content"].split(
+            "[SHOPPING_CANDIDATE_MEMORY_V1]", 1
+        )[1]
+        self.assertNotIn("可点击的按钮", memory_content)
         self.assertTrue(trajectory["candidate_memory_views"])
         self.assertLessEqual(
             trajectory["candidate_memory_views"][-1]["used_tokens"],

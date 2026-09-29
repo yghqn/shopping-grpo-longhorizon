@@ -37,6 +37,7 @@ grpo = [
   "ray[default]==2.56.1",
   "tensordict==0.10.0",
   "numpy==2.2.6",
+  "ninja>=1.11,<2",
   "swanlab==0.9.1",
 ]
 dev = [
