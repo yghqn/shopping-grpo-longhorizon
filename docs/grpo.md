@@ -85,44 +85,38 @@ bash scripts/grpo.sh -- \
   trainer.save_freq=10
 ```
 
-## Budget-aware candidate-memory arm
+## Budget-aware training arms
 
-`grpo_budget_memory_v1` is the named training arm for this branch. It leaves
-the canonical `grpo_baseline` defaults unchanged and explicitly enables two
-features:
-
-- a 1,024-token candidate-memory view built only from public observation v2;
-- a bounded cost for cumulative actor input above 60,000 tokens.
-
-The online AgentLoop appends the newest memory view to the latest tool response.
-Before the next generation it removes older marker-delimited memory capsules
-while keeping `prompt_ids`, `response_mask` and `response_logprobs` aligned.
-Historical candidates use stable labels; executable ASINs and buttons still
-come only from the current observation. Memory audit records keep counts and a
-content hash without copying prompt text or hidden task fields.
-
-The optional token cost is:
+The SFT-e1 paired development ablation selects `grpo_budget_only_v1` as the
+primary training arm. It keeps candidate memory disabled and adds a bounded
+cost for cumulative actor input above 60,000 tokens:
 
 ```text
 min(max(cumulative_input_tokens - 60000, 0) / 1000 * 0.001, 0.1)
 ```
 
-It is subtracted from the constraint-aware terminal utility. A soft, capped
-cost keeps long but valid trajectories trainable; context-limit failures remain
-separate infrastructure-invalid samples.
+The 40-task evaluation used a 100,000-token hard trajectory ceiling, while
+GRPO uses this soft, capped reward cost. They target the same resource metric
+but are not equivalent interventions. The evaluation result motivates testing
+the soft cost; it does not establish its training benefit in advance.
 
-Resolve the complete treatment command without starting training:
+`grpo_budget_memory_v1` remains available as an ablation. It additionally
+injects a 1,024-token candidate-memory view built from public observation v2.
+On the SFT-e1 development run this reduced strict success from 18/40 to 14/40,
+so it is not the recommended primary arm. The online AgentLoop integration and
+audit records remain covered by tests for future redesign work.
+
+Resolve either command without starting training:
 
 ```bash
-bash scripts/validate_budget_memory_training.sh
+python scripts/run_experiment.py grpo_budget_only_v1 --dry-run
+python scripts/run_experiment.py grpo_budget_memory_v1 --dry-run
 ```
 
-This validation imports the real pinned veRL/Hydra runtime, runs the focused
-adapter and reward tests, and then prints the resolved named experiment. It does
-not start Ray, load model weights onto a GPU, or create a training checkpoint.
-
-The branch contains the training integration and dry-run configuration, but no
-local-modification SFT or GRPO checkpoint has been trained yet.
+The branch contains the training integration and dry-run configurations, but
+no local-modification GRPO checkpoint has been trained yet. See
+[`sft-e1-ablation.md`](sft-e1-ablation.md) for the paired evidence and the
+holdout-reuse boundary.
 
 ## Export
 

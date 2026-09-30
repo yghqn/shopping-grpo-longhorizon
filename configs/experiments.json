@@ -50,6 +50,16 @@
       "stage": "grpo",
       "overrides": {"length_shaping_enabled": true, "soft_length_threshold": 20}
     },
+    "grpo_budget_only_v1": {
+      "stage": "grpo",
+      "overrides": {
+        "candidate_memory_enabled": false,
+        "input_token_shaping_enabled": true,
+        "input_token_soft_threshold": 60000,
+        "input_token_penalty_per_1k": 0.001,
+        "max_input_token_penalty": 0.1
+      }
+    },
     "grpo_budget_memory_v1": {
       "stage": "grpo",
       "overrides": {

@@ -1,5 +1,7 @@
 # 40-task unseen development holdout
 
+> **状态更新（2026-09-30）**：本页记录的是原始 base model 上冻结的 v4 留出评测。之后同一 40 条任务又用于 SFT-e1 四臂消融，因此它们现在属于开发数据，不能再作为新方案的未见评测。SFT-e1 结果与下一阶段决定见 [`sft-e1-ablation.md`](sft-e1-ablation.md)。
+
 This protocol validates the candidate-memory design selected on the 10-task
 smoke set. It remains a development evaluation and does not touch Final-200
 Clean.

@@ -82,6 +82,18 @@ class ExperimentConfigTest(unittest.TestCase):
         self.assertIn("shopping_trace.enable=false", baseline)
         self.assertIn("shopping_trace.enable=true", treatment)
 
+    def test_budget_only_arm_enables_token_cost_without_candidate_memory(self):
+        registry = load_registry(ROOT / "configs/experiments.json")
+        treatment = resolve_experiment(registry, "grpo_budget_only_v1")
+
+        _, treatment_env, _ = build_experiment(treatment, root=ROOT)
+
+        self.assertEqual(treatment_env["SHOPPING_CANDIDATE_MEMORY_ENABLE"], "false")
+        self.assertEqual(treatment_env["SHOPPING_INPUT_TOKEN_SHAPING_ENABLE"], "true")
+        self.assertEqual(treatment_env["SHOPPING_INPUT_TOKEN_SOFT_THRESHOLD"], "60000")
+        self.assertEqual(treatment_env["SHOPPING_INPUT_TOKEN_PENALTY_PER_1K"], "0.001")
+        self.assertEqual(treatment_env["SHOPPING_MAX_INPUT_TOKEN_PENALTY"], "0.1")
+
     def test_budget_memory_arm_enables_memory_and_token_cost_environment(self):
         registry = load_registry(ROOT / "configs/experiments.json")
         baseline = resolve_experiment(registry, "grpo_baseline")
