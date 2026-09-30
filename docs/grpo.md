@@ -64,6 +64,7 @@ Important defaults:
 | KL reward / KL loss | disabled / disabled |
 | Policy entropy measurement | enabled with chunking and checkpointing (logging only) |
 | PPO output head | chunked fused kernel (`torch` backend) |
+| Actor padding mode | remove padding, one trajectory per microbatch |
 
 Dynamic sampling can generate at most three batches to find a useful update and
 permits at most ten consecutive skipped updates. These bounds prevent an
@@ -81,6 +82,12 @@ log-probabilities and entropy in bounded chunks instead of retaining a full
 keeps SDPA attention: output-head fusion directly addresses the observed
 large-vocabulary allocation, while attention backend changes require a
 separate correctness check for the hybrid Qwen3.5 architecture.
+
+veRL 0.8's padded fused-output branch does not restore the nested sequence
+offsets required by PPO loss. The actor therefore keeps remove-padding enabled.
+Because every actor, rollout-logprob and reference microbatch contains exactly
+one trajectory, this does not pack unrelated trajectories into one attention
+sequence.
 
 Each run also appends `training_diagnostics.jsonl` under its output directory.
 `generation_batch` records contain every generated rollout, its public tool

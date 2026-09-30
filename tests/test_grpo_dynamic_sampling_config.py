@@ -21,6 +21,7 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         self.assertEqual(config.data.max_response_length, 20480)
         self.assertEqual(config.actor_rollout_ref.rollout.max_model_len, 24576)
         self.assertFalse(config.actor_rollout_ref.actor.use_dynamic_bsz)
+        self.assertTrue(config.actor_rollout_ref.model.use_remove_padding)
         self.assertTrue(config.actor_rollout_ref.model.use_fused_kernels)
         self.assertEqual(
             config.actor_rollout_ref.model.fused_kernel_options.impl_backend,
@@ -61,6 +62,12 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(SystemExit, "model.use_fused_kernels must be true"):
             validate_training_memory_budget(unfused_output_head)
+
+        padded_fused_output_head = compose_runtime_config(
+            ["actor_rollout_ref.model.use_remove_padding=false"]
+        )
+        with self.assertRaisesRegex(SystemExit, "model.use_remove_padding must be true"):
+            validate_training_memory_budget(padded_fused_output_head)
 
         triton_output_head = compose_runtime_config(
             ["actor_rollout_ref.model.fused_kernel_options.impl_backend=triton"]

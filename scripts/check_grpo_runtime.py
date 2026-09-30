@@ -372,6 +372,11 @@ def validate_training_memory_budget(config):
             "model.use_fused_kernels must be true so Qwen3.5 PPO does not "
             "materialize the full token-by-vocabulary logits tensor"
         )
+    if not bool(model.use_remove_padding):
+        raise SystemExit(
+            "model.use_remove_padding must be true with veRL 0.8 fused kernels "
+            "so PPO log-prob outputs preserve the nested sequence offsets"
+        )
     fused_backend = str(model.fused_kernel_options.get("impl_backend", ""))
     if fused_backend != "torch":
         raise SystemExit(
@@ -424,6 +429,7 @@ def validate_training_memory_budget(config):
                 "actor_dynamic_batch": False,
                 "model_fused_kernels": True,
                 "model_fused_kernels_backend": fused_backend,
+                "model_remove_padding": True,
                 "actor_entropy_chunking": bool(
                     actor.entropy_from_logits_with_chunking
                 ),

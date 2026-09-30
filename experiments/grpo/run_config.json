@@ -31,7 +31,8 @@
     "attention_implementation": "sdpa",
     "fused_ppo_output_head": {
       "enabled": true,
-      "backend": "torch"
+      "backend": "torch",
+      "remove_padding": true
     },
     "dynamic_sampling": {
       "enabled": true,
