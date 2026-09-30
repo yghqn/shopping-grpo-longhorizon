@@ -44,6 +44,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--experiment-name", default="shopping-agent-grpo")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="resume from the latest complete checkpoint in --output",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "hydra_overrides",
@@ -62,9 +67,16 @@ def _runtime_overrides(args: argparse.Namespace) -> list[str]:
     extra = list(args.hydra_overrides)
     if extra[:1] == ["--"]:
         extra = extra[1:]
+    if args.resume:
+        extra = [
+            override
+            for override in extra
+            if not override.startswith("trainer.resume_mode=")
+        ]
     return [
         logger_override,
         f"trainer.experiment_name={args.experiment_name}",
+        *(["trainer.resume_mode=auto"] if args.resume else []),
         *extra,
     ]
 
@@ -74,6 +86,40 @@ def _validated_path(path: Path, description: str) -> Path:
     if not resolved.exists():
         raise SystemExit(f"{description} does not exist: {resolved}")
     return resolved
+
+
+def _validated_resume_step(output: Path) -> int:
+    marker = output / "latest_checkpointed_iteration.txt"
+    if not marker.is_file():
+        raise SystemExit(f"resume marker does not exist: {marker}")
+    try:
+        step = int(marker.read_text(encoding="utf-8").strip())
+    except ValueError as error:
+        raise SystemExit(f"resume marker is not an integer: {marker}") from error
+    if step <= 0:
+        raise SystemExit(f"resume step must be positive: {step}")
+
+    checkpoint = output / f"global_step_{step}"
+    actor = checkpoint / "actor"
+    required = {
+        "checkpoint directory": checkpoint.is_dir(),
+        "actor directory": actor.is_dir(),
+        "actor model state": any(actor.glob("model_world_size_*_rank_*.pt")),
+        "actor optimizer state": any(
+            actor.glob("optim_world_size_*_rank_*.pt")
+        ),
+        "actor extra state": any(
+            actor.glob("extra_state_world_size_*_rank_*.pt")
+        ),
+        "dataloader state": (checkpoint / "data.pt").is_file(),
+    }
+    missing = [name for name, present in required.items() if not present]
+    if missing:
+        raise SystemExit(
+            f"resume checkpoint is incomplete: {checkpoint}; missing "
+            + ", ".join(missing)
+        )
+    return step
 
 
 def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
@@ -89,7 +135,11 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
     val_data = _validated_path(args.val_data, "validation parquet")
     config = _validated_path(args.config, "GRPO example config")
     output = args.output.expanduser().resolve()
-    if output.exists():
+    if args.resume:
+        if not output.is_dir():
+            raise SystemExit(f"resume output directory does not exist: {output}")
+        _validated_resume_step(output)
+    elif output.exists():
         if not output.is_dir():
             raise SystemExit(f"output must be a directory: {output}")
         if any(output.iterdir()):

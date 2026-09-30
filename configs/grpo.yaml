@@ -138,6 +138,10 @@ trainer:
   total_training_steps: 500
   save_freq: 50
   test_freq: 50
+  resume_mode: disable
+  resume_from_path: null
+  max_actor_ckpt_to_keep: null
+  max_critic_ckpt_to_keep: null
   val_before_train: true
   logger: [console]
   project_name: shopping-grpo

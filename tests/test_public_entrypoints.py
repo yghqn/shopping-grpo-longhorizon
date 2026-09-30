@@ -142,6 +142,109 @@ class PublicEntrypointTest(unittest.TestCase):
         self.assertIn("trainer.experiment_name=smoke", preflight)
         self.assertIn("trainer.total_training_steps=2", preflight)
 
+    def test_grpo_launcher_requires_explicit_resume_for_nonempty_output(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            model = temporary / "model"
+            model.mkdir()
+            (model / "config.json").write_text("{}", encoding="utf-8")
+            (model / "model.safetensors").write_bytes(b"example")
+            train = temporary / "train.parquet"
+            train.write_bytes(b"example")
+            validation = temporary / "validation.parquet"
+            validation.write_bytes(b"example")
+            output = temporary / "output"
+            output.mkdir()
+            (output / "existing").write_text("data", encoding="utf-8")
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "train_grpo.py",
+                    "--model",
+                    str(model),
+                    "--train-data",
+                    str(train),
+                    "--val-data",
+                    str(validation),
+                    "--output",
+                    str(output),
+                    "--config",
+                    str(root / "configs/grpo.yaml"),
+                    "--dry-run",
+                ],
+            ):
+                args = parse_args()
+            with self.assertRaisesRegex(
+                SystemExit,
+                "output directory must be new or empty",
+            ):
+                build_command(args)
+
+    def test_grpo_launcher_resumes_only_from_complete_checkpoint(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            model = temporary / "model"
+            model.mkdir()
+            (model / "config.json").write_text("{}", encoding="utf-8")
+            (model / "model.safetensors").write_bytes(b"example")
+            train = temporary / "train.parquet"
+            train.write_bytes(b"example")
+            validation = temporary / "validation.parquet"
+            validation.write_bytes(b"example")
+            output = temporary / "output"
+            actor = output / "global_step_100" / "actor"
+            actor.mkdir(parents=True)
+            (output / "latest_checkpointed_iteration.txt").write_text(
+                "100",
+                encoding="utf-8",
+            )
+            for name in (
+                "model_world_size_1_rank_0.pt",
+                "optim_world_size_1_rank_0.pt",
+                "extra_state_world_size_1_rank_0.pt",
+            ):
+                (actor / name).write_bytes(b"example")
+            (output / "global_step_100" / "data.pt").write_bytes(b"example")
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "train_grpo.py",
+                    "--model",
+                    str(model),
+                    "--train-data",
+                    str(train),
+                    "--val-data",
+                    str(validation),
+                    "--output",
+                    str(output),
+                    "--config",
+                    str(root / "configs/grpo.yaml"),
+                    "--resume",
+                    "--dry-run",
+                    "--",
+                    "trainer.resume_mode=disable",
+                ],
+            ):
+                args = parse_args()
+            command, _ = build_command(args)
+
+        self.assertEqual(command.count("trainer.resume_mode=auto"), 1)
+        self.assertNotIn("trainer.resume_mode=disable", command)
+
+    def test_grpo_config_declares_checkpoint_resume_controls(self):
+        config = (
+            Path(__file__).resolve().parents[1] / "configs/grpo.yaml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("resume_mode: disable", config)
+        self.assertIn("resume_from_path: null", config)
+        self.assertIn("max_actor_ckpt_to_keep: null", config)
+        self.assertIn("max_critic_ckpt_to_keep: null", config)
+
 
 if __name__ == "__main__":
     unittest.main()
