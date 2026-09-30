@@ -1,0 +1,52 @@
+{
+  "schema_version": "shopping-local-sft-selection-summary-v1",
+  "fixed_denominator": 40,
+  "runs": {
+    "sft_e1": {
+      "strict_successes": 18,
+      "done_rate": 0.95,
+      "mean_terminal_utility": 0.33974793002136755,
+      "average_steps": 8.675,
+      "guard_rejections": 13,
+      "total_input_tokens": 2208741
+    },
+    "sft_e2_24576": {
+      "strict_successes": 17,
+      "done_rate": 0.925,
+      "mean_terminal_utility": 0.3279096554487179,
+      "average_steps": 10.1,
+      "guard_rejections": 2,
+      "total_input_tokens": 2703609
+    },
+    "sft_e3_24576": {
+      "strict_successes": 19,
+      "done_rate": 1.0,
+      "mean_terminal_utility": 0.41361077724358974,
+      "average_steps": 9.225,
+      "guard_rejections": 6,
+      "total_input_tokens": 2253459
+    },
+    "sft_e3_24576_budget_only": {
+      "strict_successes": 19,
+      "done_rate": 0.925,
+      "mean_terminal_utility": 0.44126702724358974,
+      "average_steps": 8.35,
+      "guard_rejections": 4,
+      "total_input_tokens": 1686792,
+      "budget_exhausted": 3
+    }
+  },
+  "selection": {
+    "sft_checkpoint": "outputs/models/sft-merged-e3-24576",
+    "grpo_experiment": "grpo_budget_only_v1",
+    "candidate_memory_enabled": false,
+    "budget_only_vs_e3_token_delta": -566667,
+    "budget_only_vs_e3_token_change_rate": -0.251465,
+    "strict_success_delta": 0
+  },
+  "limitations": [
+    "The 40 tasks are development data used for checkpoint and method selection.",
+    "The 100000-token evaluation ceiling is a hard stop; GRPO uses a distinct soft capped reward cost.",
+    "Final-200 Clean has not been run for this checkpoint."
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": "shopping-local-sft-run-v1",
+  "stage": "sft_checkpoint_selection",
+  "base_model": "Qwen/Qwen3.5-2B",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "memory_mib": 24564
+  },
+  "training": {
+    "train_file": "data/sft/train.jsonl",
+    "train_rows": 800,
+    "train_rows_kept": 799,
+    "train_sha256": "8c3a6ff0033f6ea672af609891e747d60652ddc17e8d3c8eacb19e9d96dd9477",
+    "validation_file": "data/sft/validation.jsonl",
+    "validation_rows": 200,
+    "validation_rows_kept": 200,
+    "validation_sha256": "9525cc2fb04a1d8d38ae2db959397da908dde3fea766f580fdcf77d1239533cc",
+    "method": "qlora",
+    "liger_kernel": true,
+    "dtype": "bf16",
+    "max_length": 24576,
+    "epochs": 3,
+    "optimizer_steps": 300,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "learning_rate": 0.0001,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "gradient_checkpointing": true,
+    "attention_implementation": "sdpa",
+    "peak_gpu_memory_gib": 18.2,
+    "final_train_loss": 0.3172,
+    "validation_loss_by_epoch": {
+      "1": 0.3521,
+      "2": 0.3396,
+      "3": 0.3415
+    },
+    "selected_checkpoint": "epoch_3"
+  },
+  "evaluation": {
+    "tasks": "data/budget_memory/dev_holdout_40.jsonl",
+    "tasks_sha256": "5c80820f3a0f692bac8b5241c138a1b3e5bef90fa027c8e818acc142e10a7af6",
+    "expected_tasks": 40,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_steps": 35,
+    "max_generated_tokens_per_turn": 512,
+    "context_window": 24576,
+    "context_safety_margin": 512
+  },
+  "archives": {
+    "results": {
+      "path": "outputs/cloud-runs/2026-09-30-sft-e3-24576-results.tar.gz",
+      "sha256": "e87bf412ffd45bc10b4cfc8869dc65efd49d54074787d32c45de3043d1f335f1"
+    },
+    "adapter": {
+      "path": "outputs/cloud-runs/2026-09-30-sft-e3-24576-adapter.tar.gz",
+      "sha256": "bd5bff75db503c058408cf172b4c3f6ab04e7bdfd1099600ed52edef3ef7f638"
+    }
+  }
+}

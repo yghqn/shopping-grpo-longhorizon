@@ -1,6 +1,6 @@
 # Shopping GRPO
 
-> **本地改造说明**：当前分支已在单张 RTX 4090 上完成 Qwen3.5-2B SFT-e1。相同 40-task 开发集上，原始模型严格成功 0/40，SFT-e1 为 18/40；加入 100k 累计输入硬上限后仍为 18/40，输入 token 减少 28.77%。Candidate Memory 降到 14/40，因此下一阶段主实验改为关闭记忆、只做输入成本软塑形的 `grpo_budget_only_v1`；`grpo_budget_memory_v1` 保留为消融。GRPO 与 Final-200 Clean 尚未执行，详细证据见 [SFT-e1 消融](docs/sft-e1-ablation.md)。下文未特别标注的训练结果属于固定上游版本。
+> **本地改造说明**：当前分支已在单张 RTX 4090 24GB 上完成 Qwen3.5-2B 的 24,576-token、3-epoch QLoRA SFT。40-task 开发集上，原始模型严格成功 0/40，入选的 SFT-e3 为 19/40；加入 100k 累计输入硬上限后仍为 19/40，输入 token 减少 25.15%。Candidate Memory 在 SFT-e1 上从 18/40 降到 14/40，因此下一阶段使用关闭记忆、只做输入成本软塑形的 `grpo_budget_only_v1`。GRPO 与 Final-200 Clean 尚未执行，详细证据见 [SFT checkpoint 选择](docs/sft-checkpoint-selection.md)。下文未特别标注的训练结果属于固定上游版本。
 
 <div align="center">
 
@@ -106,8 +106,8 @@ GRPO 从合并后的 SFT 模型开始。veRL 在 ShopSimulator 中为每个 Prom
 AgentLoop、工具适配层、运行时兼容代码和一个带 SHA-256 校验的小补丁。详细配置见
 [GRPO 文档](docs/grpo.md)。
 
-本分支提供两个预算感知命名实验。`grpo_budget_only_v1` 关闭候选记忆，只对超过
-60,000 的累计输入 token 施加封顶软惩罚，是 SFT-e1 消融后选定的主实验；
+本分支提供两个预算感知命名实验。`grpo_budget_only_v1` 从入选的 SFT-e3 合并模型
+开始，关闭候选记忆，只对超过 60,000 的累计输入 token 施加封顶软惩罚；
 `grpo_budget_memory_v1` 同时开启 1,024-token 候选记忆，保留为负向消融。两者均已
 接入同一在线 rollout 和奖励流水线，但尚未真正启动本地改造后的 GRPO 训练。
 

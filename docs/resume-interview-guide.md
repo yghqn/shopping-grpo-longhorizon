@@ -2,152 +2,77 @@
 
 ## 一句话介绍
 
-基于 Shopping GRPO 改造长程购物 Agent，引入可追溯候选记忆、当前页面动作隔离和
-轨迹级 token 预算，在 Qwen3.5-2B 的 40 个未见开发任务上观察到严格成功从 0/40
-提升到 2/40，同时总输入 token 降低 20.0%。
+在 Shopping GRPO 上改造长程购物 Agent，将 96GB 长上下文训练配方适配到单张 RTX 4090 24GB，并通过配对消融选择 SFT checkpoint 与推理预算策略：Qwen3.5-2B 从 0/40 提升到 19/40 严格成功，100k token 上限保留全部成功并减少 25.15% 输入成本。
 
 ## 简历项目名称
 
-**Budget-Aware Shopping Agent｜长程购物智能体的候选记忆与推理成本优化**
+**Budget-Aware Shopping Agent｜长程购物智能体的后训练与推理成本优化**
 
 ## 简历描述
 
-- 针对购物 Agent 在多页面搜索中遗忘候选约束、重复核验和引用过期商品控件的问题，
-  设计只读取公开 observation 的可追溯候选记忆，保留字段来源与冲突，并用稳定历史
-  标签和当前页面动作区隔离不可执行的旧商品标识。
-- 在评测运行时加入累计输入 token 计量与每轨迹 100,000-token 上限，构建
-  baseline、budget-only、memory-v4 三组固定任务配对实验，区分预算截断与候选记忆
-  各自带来的影响。
-- 在 Qwen3.5-2B 的 40 个未参与调参的开发留出任务上，memory-v4 取得 2/40 严格成功，
-  两个对照均为 0/40；相对 baseline 将总输入 token 降低 20.0%、Guard 拒绝从 155
-  降至 105、非法动作终止从 28 降至 21。
-- 建立固定分母、数据哈希、任务重叠审计、Wilson 区间和配对 bootstrap 报告流程，
-  通过 83 项相关测试并保存可复核的逐任务轨迹；明确单次 40-task 结果尚不构成统计显著
-  或 Final-200 正式结论。
-
-如果简历空间只够两条，保留第一条和第三条；如果岗位更看重工程规范，再加入第四条。
+- 将 Qwen3.5-2B 的长上下文 SFT 配方适配到单张 RTX 4090，采用 QLoRA、Liger、梯度检查点和 24,576-token 上下文完成 3-epoch 训练，峰值显存 18.2 GiB。
+- 在固定 40-task 开发集上按 task ID 配对比较 base、SFT-e1/e2/e3，发现最低 validation loss 的 e2 并非最佳策略，最终选择达到 19/40 严格成功、100% 完成率的 e3。
+- 实现累计输入 token 计量和轨迹级预算控制；e3 上的 100k 硬上限保留完全相同的 19 个成功任务，将输入 token 从 2.25M 降到 1.69M（-25.15%）。
+- 实现带来源审计的 Candidate Memory，并通过消融发现其在 SFT 后造成 18/40 到 14/40 的退化；基于错误商品和错误规格案例否决该方案，保留为负向实验。
+- 将 budget-only 软奖励塑形接入 veRL 在线 GRPO，保留固定分母、数据哈希、任务重叠审计和逐任务轨迹；正式 GRPO 与 Final-200 尚未执行，不把上游结果算作本项目成果。
 
 ## 技术栈
 
-Python、PyTorch、vLLM、Qwen3.5-2B、ShopSimulator、结构化工具调用、长上下文管理、
-固定分母评测、paired bootstrap、Git、AutoDL、RTX 4090/4090D。
-
-## 系统结构
-
-```mermaid
-flowchart LR
-    U[用户购物需求] --> A[Qwen3.5-2B Actor]
-    A --> T[结构化购物工具]
-    T --> E[ShopSimulator v2.1]
-    E --> O[公开 Observation v2]
-    O --> P[Observation 投影与 token 预算]
-    P --> C[候选记忆]
-    C --> C1[字段来源与冲突]
-    C --> C2[稳定历史标签 H01/H02]
-    C --> C3[当前页面动作区]
-    C1 --> A
-    C2 --> A
-    C3 --> G[Action Guard]
-    A --> G
-    G -->|合法动作| T
-    G -->|拒绝过期或不可见动作| M[错误与成本指标]
-    E --> R[Reward v3 终局]
-    R --> M
-    P --> M
-```
-
-候选记忆不是向量数据库，也不引入外部商品知识。它是一次轨迹内部的结构化工作记忆，
-只整理 Agent 已经看过的公开页面证据。
+Python、PyTorch、Transformers、PEFT/QLoRA、Liger、vLLM、veRL、Qwen3.5-2B、ShopSimulator、结构化工具调用、长上下文训练、配对评测、Git、AutoDL、RTX 4090。
 
 ## 1 分钟面试讲解
 
-这个项目解决的是长程购物 Agent 的状态管理问题。基础模型在搜索、商品详情和规格页面
-之间切换时，经常忘记之前核验过的约束，或者拿历史页面里的 ASIN 当成当前可点击控件，
-导致重复搜索和非法动作。
+这个项目研究长程购物 Agent 的成功率与推理成本。原项目的长上下文训练在 96GB GPU 上验证，我先用 QLoRA、Liger 和梯度检查点把 24,576-token、3-epoch SFT 跑到单张 24GB RTX 4090，峰值显存 18.2 GiB。
 
-我在原项目的评测运行时加入了候选记忆。它只读取模型真实看到的公开 observation，记录
-候选商品的属性、证据来源和冲突。审计轨迹保留真实 ASIN，但模型只看到 H01、H02 这类
-稳定历史标签；真正可以执行的动作单独来自当前页面，所以历史记忆不会伪造可点击按钮。
-我还加入累计输入 token 统计和轨迹级硬上限，用三组实验拆分记忆与预算限制的作用。
+我没有只看 validation loss，而是在固定 40 个开发任务上配对比较三个 checkpoint。E2 的 loss 最低，但环境成功只有 17/40；E3 达到 19/40、完成率 100%，因此选 e3 作为 GRPO 起点。然后我加入累计输入 token 上限，保持相同 19 个成功任务，同时把总输入量降低 25.15%，三条被截断的都是原本失败轨迹。
 
-在 40 个未参与调参的开发留出任务上，baseline 和 budget-only 都是 0 个严格成功，
-memory-v4 有 2 个；同时总输入 token 比 baseline 低 20%，非法动作终止从 28 降到 21。
-这个结果说明方法有工程价值，但样本仍小，bootstrap 区间包含 0，所以我把它表述为积极
-的开发证据，不宣称统计显著。
+我也实现了可追溯 Candidate Memory，但它在 SFT 后把成功数从 18 降到 14。逐任务分析发现它会偏向搜索高排名但约束不完整的商品，也会干扰颜色和套餐选择，所以没有为了故事好看保留该功能，而是把它记录为负向消融。下一步是用 e3 启动 budget-only GRPO，再在配置冻结后运行 Final-200 Clean。
 
 ## 3 分钟讲解顺序
 
-1. **问题**：长程页面交互让上下文不断增长，模型会遗忘约束、重复核验并执行过期动作。
-2. **基线现象**：10-task smoke 中 baseline 严格成功 0/10，9 个任务因非法动作过多终止。
-3. **设计**：加入来源可追溯的候选记忆、稳定历史标签、当前动作区和累计 token 上限。
-4. **关键修复**：最初模型直接复用历史 ASIN，Action Guard 会拒绝；拆分“历史证据”和
-   “当前可执行状态”后，记忆可以辅助决策而不会冒充页面控件。
-5. **实验**：先用 10 题选择 v4，再冻结剩余 40 题；设置 baseline、budget-only、
-   memory-v4，所有任务、解码参数、环境和 Reward 保持一致。
-6. **结果**：memory-v4 新增两个 gold purchase，总 token 降低 20%，Guard 拒绝减少 50，
-   且没有 baseline-only 成功回退。
-7. **边界**：40 题单次运行的区间仍宽；训练侧接入已完成但尚未执行，下一步应先做小规模
-   训练冒烟，再做多随机种子，并最终只在方法冻结后运行 Final-200 Clean。
+1. **问题**：购物 Agent 需要多轮搜索、核验规格和购买，失败既来自策略错误，也来自不断增长的输入成本。
+2. **资源约束**：上游配方在 96GB GPU 上验证；本项目需要在可租用的 24GB 4090 上完成真实训练。
+3. **训练适配**：QLoRA + Liger + gradient checkpointing，完整 24,576 上下文，3 epochs，峰值 18.2 GiB。
+4. **Checkpoint 选择**：e1/e2/e3 分别为 18/17/19 个严格成功，证明 validation loss 不能替代环境评测。
+5. **预算消融**：100k 上限保持 19/40，输入 token 减少 566,667，平均步骤从 9.225 降到 8.35。
+6. **负向结果**：Candidate Memory 对弱 base model 有帮助，但干扰 SFT 策略；根据五个退化案例将其从主方案移除。
+7. **下一步**：在 80/96GB GPU 上运行 budget-only GRPO，冻结后再做 Final-200。
 
 ## 常见追问
 
-### 这和 RAG 有什么区别？
+### 为什么 QLoRA 还能保留长上下文？
 
-RAG 通常从外部知识库检索内容；这里没有外部知识库。候选记忆只压缩同一条购物轨迹中
-已经观察到的商品证据，属于在线工作记忆和状态管理。
+量化主要降低基础权重和优化器状态占用，Liger 与梯度检查点进一步控制激活显存。最长样本单步压力测试峰值 18.0 GiB，完整训练峰值 18.2 GiB，因此不是简单把上下文砍短来换显存。
 
-### 如何保证没有偷看答案？
+### 为什么不用 validation loss 最低的 epoch 2？
 
-记忆模块只接收公开 observation v2，不读取目标商品私有字段、Reward 标签或最终答案。
-数据测试还检查了训练集、10-task 调参集、40-task 留出集和 Final-200 的 task_id 边界。
+Validation loss 衡量教师动作 token 的平均预测误差，不直接衡量商品、规格、终止和工具交互是否正确。E2 的 loss 为 0.3396，低于 e3 的 0.3415，但环境严格成功是 17/40 对 19/40，且成本更高，所以选择 e3。
 
-### 为什么不能把历史 ASIN 直接给模型？
+### 预算上限是不是靠提前终止来虚假降低 token？
 
-历史 ASIN 对审计有用，但离开原搜索页面后不一定仍是合法控件。模型如果再次点击，会被
-Action Guard 拒绝。项目在审计数据中保留真实 ASIN，在模型上下文中改用稳定标签，并把
-当前页面允许的动作单独呈现。
+它确实通过提前停止三条超过 100k 的轨迹节省成本，所以报告明确披露 budget-exhausted 数量。关键是配对结果显示 19 个成功 task ID 完全不变，被截断的三条原本都是失败。GRPO 中使用的是软惩罚，不把硬上限结果直接冒充训练收益。
 
-### 为什么需要 budget-only 对照？
+### Candidate Memory 为什么失败？
 
-如果 memory-v4 同时使用 token 上限，只和无限预算 baseline 比较，就无法判断收益来自
-记忆还是提前截断。Budget-only 使用相同上限但关闭记忆，结果 token 降低 10%，严格成功
-仍为 0/40；memory-v4 则降低 20% 并取得 2/40，说明观察到的变化不只是预算限制。
+当前记忆按已核验程度、最近出现和搜索排名排序，没有直接优化用户约束匹配；1024-token 视图还会重复当前搜索证据。失败案例既包括选错商品，也包括正确商品上选错颜色或套餐，说明候选排序和提示分布偏移都可能干扰 SFT 策略。
 
-### 2/40 是否太低？
+### 19/40 能否和上游 60.5% 比较？
 
-绝对成功率仍低，这反映 2B 基础模型的工具能力有限。项目价值在于用同一模型、同一任务
-和同一环境做受控改造，同时改善成功、成本和动作合法性。简历中应写“观察到 2/40 对
-0/40”，不能写成“证明成功率显著提升”。
-
-### 为什么没有直接做 GRPO？
-
-先用推理期消融验证记忆表示和成本口径，可以在训练前发现协议错误并降低试错成本。
-训练侧现已接入候选记忆和累计输入 token 软惩罚，但尚未实际启动训练，因此本分支仍不
-把上游 SFT/GRPO 结果算作自己的训练成果。
-
-### 下一步怎么做？
-
-先在云端验证真实 veRL/Hydra 生命周期并做短程 GRPO 冒烟；确认训练稳定后再做正式训练
-和多次重复运行，最后在不继续调参的前提下执行一次 Final-200 Clean。
+不能直接比较。19/40 来自已经用于开发选择的 40-task 集；上游 60.5% 来自不同的 Final-200 协议。只有在 GRPO 配置冻结后运行同一 Final-200，才能做公平横向比较。
 
 ## 不能写进简历的说法
 
-- “成功率显著提升”：当前置信区间包含 0。
-- “完成了 GRPO 训练优化”：训练代码已接入，但本分支尚未产出自己的 GRPO checkpoint。
-- “Final-200 提升 5%”：40-task 开发留出不是 Final-200。
-- “节省 49.9% token”：这是 10-task 内部 v2/v4 调参比较；对未见 baseline 的可信数字是
-  20.0%。
-- “解决了购物 Agent”：当前绝对成功率仍低，应强调受控工程改进和可复核评测。
+- “达到或超过原项目 60.5%”：当前尚未运行同一 Final-200。
+- “Candidate Memory 提升了 SFT”：实际消融显示它降低成功率。
+- “训练预算惩罚已经提升模型”：目前只验证了评测期硬上限，GRPO 软惩罚尚未训练。
+- “完成了 GRPO 优化”：训练接入已完成，但还没有本项目的 GRPO checkpoint。
+- “节省 25.15% 且完全没有代价”：应同时披露三条失败轨迹被硬上限终止。
 
 ## 可展示证据
 
-- 方法与边界：[`PROJECT.md`](../PROJECT.md)
-- 40-task 协议与结果：[`docs/dev-holdout-40.md`](dev-holdout-40.md)
-- 机器可读摘要：[`experiments/budget_memory/summary.json`](../experiments/budget_memory/summary.json)
-- 核心实现：`src/shopping_grpo/memory/candidates.py`
-- 运行时接入：`src/shopping_grpo/evaluation/rollout.py`
-- 训练侧接入：`src/shopping_grpo/training/grpo/adapter/agent_loop.py`
-- 命名训练实验：`configs/experiments.json` 中的 `grpo_budget_memory_v1`
-- 训练接入验证：`scripts/validate_budget_memory_training.sh`
-- 三臂入口：`scripts/dev_holdout.sh`
-- 配对统计：`scripts/compare_budget_memory_runs.py`
+- 当前状态：[`PROJECT.md`](../PROJECT.md)
+- SFT checkpoint 与预算消融：[`docs/sft-checkpoint-selection.md`](sft-checkpoint-selection.md)
+- Candidate Memory 负向分析：[`docs/sft-e1-ablation.md`](sft-e1-ablation.md)
+- 命名训练实验：`configs/experiments.json` 中的 `grpo_budget_only_v1`
+- 核心实现：`src/shopping_grpo/training/grpo/`、`src/shopping_grpo/memory/`
+- 配对报告：`scripts/compare_budget_memory_runs.py`

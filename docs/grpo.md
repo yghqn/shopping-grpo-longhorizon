@@ -87,9 +87,10 @@ bash scripts/grpo.sh -- \
 
 ## Budget-aware training arms
 
-The SFT-e1 paired development ablation selects `grpo_budget_only_v1` as the
-primary training arm. It keeps candidate memory disabled and adds a bounded
-cost for cumulative actor input above 60,000 tokens:
+The paired checkpoint evaluation selects the 24,576-token SFT-e3 model as
+the initial policy and `grpo_budget_only_v1` as the primary training arm. The
+arm keeps candidate memory disabled and adds a bounded cost for cumulative
+actor input above 60,000 tokens:
 
 ```text
 min(max(cumulative_input_tokens - 60000, 0) / 1000 * 0.001, 0.1)
@@ -109,14 +110,18 @@ audit records remain covered by tests for future redesign work.
 Resolve either command without starting training:
 
 ```bash
-python scripts/run_experiment.py grpo_budget_only_v1 --dry-run
-python scripts/run_experiment.py grpo_budget_memory_v1 --dry-run
+python scripts/run_experiment.py grpo_budget_only_v1 \
+  --model outputs/models/sft-merged-e3-24576 \
+  --dry-run
+python scripts/run_experiment.py grpo_budget_memory_v1 \
+  --model outputs/models/sft-merged-e3-24576 \
+  --dry-run
 ```
 
 The branch contains the training integration and dry-run configurations, but
 no local-modification GRPO checkpoint has been trained yet. See
-[`sft-e1-ablation.md`](sft-e1-ablation.md) for the paired evidence and the
-holdout-reuse boundary.
+[`sft-checkpoint-selection.md`](sft-checkpoint-selection.md) for checkpoint
+selection, budget evidence and the holdout-reuse boundary.
 
 ## Export
 

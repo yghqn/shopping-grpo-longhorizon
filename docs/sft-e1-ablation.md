@@ -1,5 +1,7 @@
 # SFT-e1 与预算/候选记忆消融
 
+> **后续结果**：三轮 24,576-token SFT 已完成，最终选择 e3（19/40）；e3 budget-only 保留全部成功并减少 25.15% 输入 token。见 [`sft-checkpoint-selection.md`](sft-checkpoint-selection.md)。
+
 本页记录已冻结的 Qwen3.5-2B SFT-e1 检查点及其 40-task 配对开发评测，目的是决定进入 GRPO 的配置。原始轨迹、汇总和配对统计位于 `outputs/sft-e1/`；大文件不进入 Git。
 
 ## SFT-e1 训练
