@@ -63,6 +63,7 @@ Important defaults:
 | Save / validation frequency | 50 / 50 |
 | KL reward / KL loss | disabled / disabled |
 | Policy entropy measurement | enabled with chunking and checkpointing (logging only) |
+| PPO output head | chunked fused kernel (`torch` backend) |
 
 Dynamic sampling can generate at most three batches to find a useful update and
 permits at most ten consecutive skipped updates. These bounds prevent an
@@ -73,6 +74,14 @@ as a diagnostic. Chunked entropy computation and entropy checkpointing are
 required so a long response does not materialize the full token-by-vocabulary
 entropy workspace during actor backpropagation.
 
+Qwen3.5 has a 248,320-token vocabulary. The actor therefore enables veRL's
+Qwen3.5 fused PPO output head with the `torch` backend. It computes token
+log-probabilities and entropy in bounded chunks instead of retaining a full
+`sequence_length x vocabulary_size` logits tensor. The validated GRPO path
+keeps SDPA attention: output-head fusion directly addresses the observed
+large-vocabulary allocation, while attention backend changes require a
+separate correctness check for the hybrid Qwen3.5 architecture.
+
 Each run also appends `training_diagnostics.jsonl` under its output directory.
 `generation_batch` records contain every generated rollout, its public tool
 sequence, terminal result, reward breakdown, Guard rejection reasons and group
@@ -80,6 +89,13 @@ keep/drop decision. `optimizer_step` records preserve the scalar veRL metrics,
 including entropy, PPO KL, clip fractions, response lengths and effective-group
 rates. `skipped_update` records make zero-signal attempts visible even though
 they do not advance the optimizer step.
+
+Inspect the latest generated step before changing trajectory budgets:
+
+```bash
+.venv/bin/python scripts/analyze_grpo_diagnostics.py \
+  outputs/models/<run>/training_diagnostics.jsonl
+```
 
 The canonical configuration is [`configs/grpo.yaml`](../configs/grpo.yaml).
 Advanced overrides may be appended after `--`:

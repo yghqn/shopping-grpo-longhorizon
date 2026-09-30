@@ -21,6 +21,11 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         self.assertEqual(config.data.max_response_length, 20480)
         self.assertEqual(config.actor_rollout_ref.rollout.max_model_len, 24576)
         self.assertFalse(config.actor_rollout_ref.actor.use_dynamic_bsz)
+        self.assertTrue(config.actor_rollout_ref.model.use_fused_kernels)
+        self.assertEqual(
+            config.actor_rollout_ref.model.fused_kernel_options.impl_backend,
+            "torch",
+        )
         self.assertTrue(config.actor_rollout_ref.actor.calculate_entropy)
         self.assertTrue(
             config.actor_rollout_ref.actor.entropy_from_logits_with_chunking
@@ -50,6 +55,18 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(SystemExit, "actor.use_dynamic_bsz must be false"):
             validate_training_memory_budget(dynamic_actor)
+
+        unfused_output_head = compose_runtime_config(
+            ["actor_rollout_ref.model.use_fused_kernels=false"]
+        )
+        with self.assertRaisesRegex(SystemExit, "model.use_fused_kernels must be true"):
+            validate_training_memory_budget(unfused_output_head)
+
+        triton_output_head = compose_runtime_config(
+            ["actor_rollout_ref.model.fused_kernel_options.impl_backend=triton"]
+        )
+        with self.assertRaisesRegex(SystemExit, "impl_backend must equal torch"):
+            validate_training_memory_budget(triton_output_head)
 
         unchunked_entropy = compose_runtime_config(
             ["actor_rollout_ref.actor.entropy_from_logits_with_chunking=false"]

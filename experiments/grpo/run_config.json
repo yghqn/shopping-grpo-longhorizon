@@ -1,7 +1,7 @@
 {
   "schema_version": "shopping-experiment-run-v1",
   "stage": "grpo",
-  "initial_policy": "fresh-v1 SFT checkpoint-141 merged",
+  "initial_policy": "outputs/models/sft-merged-e3-24576",
   "entrypoint": "bash scripts/grpo.sh",
   "canonical_config": "configs/grpo.yaml",
   "dependencies": {
@@ -28,6 +28,11 @@
     "reported_checkpoint_step": 100,
     "lora_rank": 16,
     "lora_alpha": 32,
+    "attention_implementation": "sdpa",
+    "fused_ppo_output_head": {
+      "enabled": true,
+      "backend": "torch"
+    },
     "dynamic_sampling": {
       "enabled": true,
       "max_generation_batches": 3,

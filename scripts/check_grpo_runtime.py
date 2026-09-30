@@ -332,6 +332,7 @@ def validate_training_memory_budget(config):
     prompt_length = int(config.data.max_prompt_length)
     response_length = int(config.data.max_response_length)
     total_length = prompt_length + response_length
+    model = config.actor_rollout_ref.model
     actor = config.actor_rollout_ref.actor
     rollout = config.actor_rollout_ref.rollout
     reference = config.actor_rollout_ref.ref
@@ -365,6 +366,17 @@ def validate_training_memory_budget(config):
     if bool(actor.use_dynamic_bsz):
         raise SystemExit(
             "actor.use_dynamic_bsz must be false so configured PPO micro batches are enforced"
+        )
+    if not bool(model.use_fused_kernels):
+        raise SystemExit(
+            "model.use_fused_kernels must be true so Qwen3.5 PPO does not "
+            "materialize the full token-by-vocabulary logits tensor"
+        )
+    fused_backend = str(model.fused_kernel_options.get("impl_backend", ""))
+    if fused_backend != "torch":
+        raise SystemExit(
+            "model.fused_kernel_options.impl_backend must equal torch for the "
+            "validated chunked PPO output-head path"
         )
     if bool(actor.calculate_entropy):
         if not bool(actor.entropy_from_logits_with_chunking):
@@ -410,6 +422,8 @@ def validate_training_memory_budget(config):
                 "actor_micro_batch_size_per_gpu": actor_micro_batch_size,
                 "actor_gradient_accumulation_steps": gradient_accumulation_steps,
                 "actor_dynamic_batch": False,
+                "model_fused_kernels": True,
+                "model_fused_kernels_backend": fused_backend,
                 "actor_entropy_chunking": bool(
                     actor.entropy_from_logits_with_chunking
                 ),
