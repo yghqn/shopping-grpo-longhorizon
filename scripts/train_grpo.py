@@ -53,6 +53,22 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _runtime_overrides(args: argparse.Namespace) -> list[str]:
+    logger_override = (
+        "trainer.logger=[console,swanlab]"
+        if args.logger == "swanlab"
+        else "trainer.logger=[console]"
+    )
+    extra = list(args.hydra_overrides)
+    if extra[:1] == ["--"]:
+        extra = extra[1:]
+    return [
+        logger_override,
+        f"trainer.experiment_name={args.experiment_name}",
+        *extra,
+    ]
+
+
 def _validated_path(path: Path, description: str) -> Path:
     resolved = path.expanduser().resolve()
     if not resolved.exists():
@@ -108,18 +124,7 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
                 "SWANLAB_LOG_DIR": str(output / "swanlab"),
             }
         )
-    logger_override = (
-        "trainer.logger=[console,swanlab]"
-        if args.logger == "swanlab"
-        else "trainer.logger=[console]"
-    )
-    overrides = [
-        logger_override,
-        f"trainer.experiment_name={args.experiment_name}",
-    ]
-    extra = list(args.hydra_overrides)
-    if extra[:1] == ["--"]:
-        extra = extra[1:]
+    overrides = _runtime_overrides(args)
     command = [
         sys.executable,
         "-m",
@@ -127,7 +132,6 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
         f"--config-path={config.parent}",
         f"--config-name={config.stem}",
         *overrides,
-        *extra,
     ]
     return command, environment
 
@@ -152,8 +156,7 @@ def main() -> None:
     preflight = [
         sys.executable,
         str(ROOT / "scripts/check_grpo_runtime.py"),
-        *overrides,
-        *extra,
+        *_runtime_overrides(args),
     ]
     preflight_status = subprocess.call(preflight, cwd=ROOT, env=environment)
     if preflight_status:
