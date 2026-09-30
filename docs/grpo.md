@@ -62,11 +62,16 @@ Important defaults:
 | Maximum training steps | 500 |
 | Save / validation frequency | 50 / 50 |
 | KL reward / KL loss | disabled / disabled |
-| Policy entropy measurement | enabled (logging only) |
+| Policy entropy measurement | enabled with chunking and checkpointing (logging only) |
 
 Dynamic sampling can generate at most three batches to find a useful update and
 permits at most ten consecutive skipped updates. These bounds prevent an
 all-equal reward batch from causing an unbounded resampling loop.
+
+Entropy does not contribute to the loss because `entropy_coeff=0`; it is kept
+as a diagnostic. Chunked entropy computation and entropy checkpointing are
+required so a long response does not materialize the full token-by-vocabulary
+entropy workspace during actor backpropagation.
 
 Each run also appends `training_diagnostics.jsonl` under its output directory.
 `generation_batch` records contain every generated rollout, its public tool

@@ -366,6 +366,15 @@ def validate_training_memory_budget(config):
         raise SystemExit(
             "actor.use_dynamic_bsz must be false so configured PPO micro batches are enforced"
         )
+    if bool(actor.calculate_entropy):
+        if not bool(actor.entropy_from_logits_with_chunking):
+            raise SystemExit(
+                "actor entropy logging requires entropy_from_logits_with_chunking=true"
+            )
+        if not bool(actor.entropy_checkpointing):
+            raise SystemExit(
+                "actor entropy logging requires entropy_checkpointing=true"
+            )
     actor_micro_batch_size = int(actor.ppo_micro_batch_size_per_gpu)
     actor_mini_batch_size = int(actor.ppo_mini_batch_size)
     try:
@@ -401,6 +410,10 @@ def validate_training_memory_budget(config):
                 "actor_micro_batch_size_per_gpu": actor_micro_batch_size,
                 "actor_gradient_accumulation_steps": gradient_accumulation_steps,
                 "actor_dynamic_batch": False,
+                "actor_entropy_chunking": bool(
+                    actor.entropy_from_logits_with_chunking
+                ),
+                "actor_entropy_checkpointing": bool(actor.entropy_checkpointing),
                 "rollout_log_prob_micro_batch_size_per_gpu": 1,
                 "rollout_log_prob_dynamic_batch": False,
                 "reference_micro_batch_size_per_gpu": 1,

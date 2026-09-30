@@ -22,6 +22,10 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         self.assertEqual(config.actor_rollout_ref.rollout.max_model_len, 24576)
         self.assertFalse(config.actor_rollout_ref.actor.use_dynamic_bsz)
         self.assertTrue(config.actor_rollout_ref.actor.calculate_entropy)
+        self.assertTrue(
+            config.actor_rollout_ref.actor.entropy_from_logits_with_chunking
+        )
+        self.assertTrue(config.actor_rollout_ref.actor.entropy_checkpointing)
         self.assertEqual(
             config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu, 1
         )
@@ -46,6 +50,21 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(SystemExit, "actor.use_dynamic_bsz must be false"):
             validate_training_memory_budget(dynamic_actor)
+
+        unchunked_entropy = compose_runtime_config(
+            ["actor_rollout_ref.actor.entropy_from_logits_with_chunking=false"]
+        )
+        with self.assertRaisesRegex(
+            SystemExit,
+            "entropy_from_logits_with_chunking=true",
+        ):
+            validate_training_memory_budget(unchunked_entropy)
+
+        unchecked_entropy = compose_runtime_config(
+            ["actor_rollout_ref.actor.entropy_checkpointing=false"]
+        )
+        with self.assertRaisesRegex(SystemExit, "entropy_checkpointing=true"):
+            validate_training_memory_budget(unchecked_entropy)
 
         dynamic_rollout_log_prob = compose_runtime_config(
             ["actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=true"]
