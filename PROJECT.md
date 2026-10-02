@@ -1,6 +1,6 @@
 # 预算感知购物 Agent
 
-本目录是基于 Shopping GRPO 的独立改造项目，遵循 `Baseline → SFT → GRPO → Evaluation`。当前已在单张 RTX 4090 24GB 上完成 Qwen3.5-2B 三轮 QLoRA SFT、checkpoint 选择和预算消融；下一阶段配置已冻结为 budget-only GRPO，但尚未启动正式 GRPO 或 Final-200 Clean。
+本目录是基于 Shopping GRPO 的独立改造项目，遵循 `Baseline → SFT → GRPO → Evaluation`。当前已完成 Qwen3.5-2B 三轮 QLoRA SFT、标准与预算感知 GRPO、checkpoint 选择和 Final-200 Clean 配对评测。SFT 在单张 RTX 4090 24GB 上完成，24K 长轨迹 GRPO 在单张 RTX PRO 6000 96GB 上完成。
 
 研究主题：在长程购物任务中比较成功率与累计输入 token、工具调用成本之间的关系。计算预算与用户的商品价格预算分开统计。
 
@@ -13,6 +13,8 @@
 - 配对比较 e1/e2/e3，在 40-task 开发集上选择 e3：19/40 严格成功、100% 完成率。
 - e3 budget-only 保留相同 19 个成功任务，将总输入 token 降低 25.15%。完整证据见 `docs/sft-checkpoint-selection.md`。
 - 增加 `grpo_budget_only_v1` 和 `grpo_budget_memory_v1` 两个显式训练 arm；前者是当前主实验，后者保留为负向消融。
+- 在相同 SFT-e3 起点上完成 500 个有效更新的标准 GRPO 与 budget-only GRPO，并用独立的 Final-200 Clean 做最终比较。
+- 修复 Qwen3.5 大词表 PPO 输出头、entropy 显存、checkpoint resume 和 veRL 分离 LoRA 导出问题；最终可服务模型会真正合并 GRPO adapter。
 
 ## 关键结果
 
@@ -22,7 +24,9 @@
 
 Candidate Memory 在弱 base model 上曾提供正向开发信号，但在 SFT-e1 上从 18/40 降到 14/40。失败覆盖错误商品和错误规格选择，因此默认关闭，不进入当前主实验。
 
-GRPO 主实验 `grpo_budget_only_v1` 使用 e3 合并模型，关闭候选记忆，并对超过 60,000 的累计输入 token 施加最大 0.1 的封顶软成本。评测中的 100k 硬停止与 GRPO 软惩罚机制不同，当前结果只支持该方向值得训练验证，不能预先宣称 GRPO 收益。
+Final-200 Clean 的固定分母结果为：SFT-e3 139/200（69.5%），标准 GRPO step 450 为 142/200（71.0%），budget-only GRPO step 450 为 139/200（69.5%）。标准 GRPO 相对 SFT 净增 3 个成功任务、平均终局效用增加 0.0255，但输入 token 增加 11.30%；配对 McNemar `p=0.6636`，只支持小幅正向趋势。
+
+Budget-only 相对标准 GRPO 减少 3.78% 输入 token 和 31 次 Guard 拒绝，但丢失 3 个净成功任务，终局效用下降 0.0344；相对 SFT 则成功数不变、输入 token 增加 7.09%。因此简单的封顶 token 软成本没有形成更优 Pareto 点，当前最佳成功率模型是标准 GRPO，最佳成本效益基线仍是 SFT-e3。
 
 ## 数据边界
 
@@ -35,6 +39,6 @@ GRPO 主实验 `grpo_budget_only_v1` 使用 e3 合并模型，关闭候选记忆
 
 购物环境、教师数据、SFT/GRPO 流程、已有奖励与评测来自上游。上游已经实现工具上下文截断、observation 投影和可选长度惩罚；这些不属于本项目新增贡献。
 
-本项目新增的是候选证据记忆及其训练接入、动作合法性隔离、累计输入成本统计/约束、24GB 训练适配、配对消融和失败诊断。当前结论是：SFT 显著恢复了 2B 模型的工具策略；简单候选记忆会干扰 SFT 后策略；预算约束可在开发任务上保留成功集合并削减失败轨迹成本。
+本项目新增的是候选证据记忆及其训练接入、动作合法性隔离、累计输入成本统计/约束、24GB SFT 与 24K GRPO 适配、配对消融和失败诊断。最终结论是：SFT 恢复了 2B 模型的大部分工具策略；标准 GRPO 以更高推理成本换取小幅成功与效用增益；简单候选记忆会干扰策略，而当前 token 软成本只能收回部分 GRPO 成本，无法保留其成功率收益。
 
 上游当前提交未发现 LICENSE/COPYING 文件。保留来源信息；对外发布代码前需要核实源码与嵌入数据的再分发条款。

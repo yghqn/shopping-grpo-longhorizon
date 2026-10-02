@@ -1,8 +1,8 @@
 {
-  "status": "holdout_complete",
+  "status": "final_complete",
   "training_integration": {
-    "status": "implemented_not_executed",
-    "experiment": "grpo_budget_memory_v1",
+    "status": "budget_only_executed",
+    "experiment": "grpo_budget_only_v1",
     "memory_delivery": "replaceable latest-tool-response capsule",
     "input_token_soft_threshold": 60000,
     "input_token_penalty_per_1k": 0.001,
@@ -57,12 +57,22 @@
     "memory_v4_vs_baseline": {"strict_success_rate_delta": 0.05, "strict_success_rate_delta_ci95": [0.0, 0.125], "total_context_input_token_delta": -467764, "total_context_input_token_delta_rate": -0.20034049369444223, "guard_rejection_delta": -50},
     "development_only": true
   },
+  "final_result": {
+    "run_date": "2026-10-03",
+    "fixed_denominator": 200,
+    "sft_e3": {"strict_successes": 139, "mean_terminal_utility": 0.6024132077991453, "total_context_input_tokens": 12081725, "guard_rejections": 23},
+    "grpo_standard_step450": {"strict_successes": 142, "mean_terminal_utility": 0.6278929945054945, "total_context_input_tokens": 13446494, "guard_rejections": 52},
+    "grpo_budget_step450": {"strict_successes": 139, "mean_terminal_utility": 0.5935084458943833, "total_context_input_tokens": 12938476, "guard_rejections": 21},
+    "standard_vs_sft": {"strict_success_delta": 3, "strict_success_rate_delta": 0.015, "paired_mcnemar_p": 0.663624, "input_token_delta_rate": 0.112953},
+    "budget_vs_standard": {"strict_success_delta": -3, "strict_success_rate_delta": -0.015, "paired_mcnemar_p": 0.647606, "input_token_delta_rate": -0.037781},
+    "blind_final": true
+  },
   "gpu_provider": "AutoDL",
   "gpu_models_verified": ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 4090 D"],
   "performance_claims": {
-    "scope": "One deterministic rollout on 40 unseen development-holdout tasks",
-    "observed": "Memory-v4 achieved 2/40 strict successes versus 0/40 for both controls while using 20.0% fewer total input tokens than baseline",
+    "scope": "One temperature-zero rollout per actor on the fixed Final-200 Clean tasks",
+    "observed": "Standard GRPO improved strict success from 139/200 to 142/200 at 11.30% higher input-token cost; budget-only returned to 139/200 while using 3.78% fewer tokens than standard GRPO",
     "statistically_significant": false,
-    "limitation": "The paired bootstrap 95% interval for the strict-success-rate delta includes zero; Final-200 Clean was not run"
+    "limitation": "Exact paired McNemar tests include no significant success-rate difference; temperature-zero vLLM repeats also showed small run-to-run variation"
   }
 }

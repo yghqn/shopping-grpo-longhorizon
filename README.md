@@ -1,6 +1,6 @@
 # Shopping GRPO
 
-> **本地改造说明**：当前分支已在单张 RTX 4090 24GB 上完成 Qwen3.5-2B 的 24,576-token、3-epoch QLoRA SFT。40-task 开发集上，原始模型严格成功 0/40，入选的 SFT-e3 为 19/40；加入 100k 累计输入硬上限后仍为 19/40，输入 token 减少 25.15%。Candidate Memory 在 SFT-e1 上从 18/40 降到 14/40，因此下一阶段使用关闭记忆、只做输入成本软塑形的 `grpo_budget_only_v1`。GRPO 与 Final-200 Clean 尚未执行，详细证据见 [SFT checkpoint 选择](docs/sft-checkpoint-selection.md)。下文未特别标注的训练结果属于固定上游版本。
+> **本地改造说明**：当前分支已完成 Qwen3.5-2B 的 24,576-token、3-epoch QLoRA SFT，以及单卡 96GB 上各 500 个有效更新的标准和 budget-only GRPO。Final-200 Clean 上，SFT-e3、标准 GRPO step 450、budget-only GRPO step 450 的严格成功率分别为 69.5%、71.0% 和 69.5%。标准 GRPO 小幅提高成功与效用但增加 11.30% 输入 token；预算软成本相对标准 GRPO 减少 3.78% token，却丢失全部净成功增益。配对差异均不显著，当前结论是明确的成功率—推理成本权衡，而不是预算方法胜出。下文未特别标注的训练结果属于固定上游版本。
 
 <div align="center">
 
@@ -108,8 +108,9 @@ AgentLoop、工具适配层、运行时兼容代码和一个带 SHA-256 校验�
 
 本分支提供两个预算感知命名实验。`grpo_budget_only_v1` 从入选的 SFT-e3 合并模型
 开始，关闭候选记忆，只对超过 60,000 的累计输入 token 施加封顶软惩罚；
-`grpo_budget_memory_v1` 同时开启 1,024-token 候选记忆，保留为负向消融。两者均已
-接入同一在线 rollout 和奖励流水线，但尚未真正启动本地改造后的 GRPO 训练。
+`grpo_budget_memory_v1` 同时开启 1,024-token 候选记忆，保留为负向消融。最终执行了
+标准 GRPO 和 `grpo_budget_only_v1` 各 500 个有效更新；Final-200 Clean 表明标准 GRPO
+从 69.5% 提升至 71.0%，预算软成本则回到 69.5%，只收回部分推理成本。
 
 ### 评估流水线是怎么设计的？
 

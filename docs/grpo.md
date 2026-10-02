@@ -146,10 +146,15 @@ python scripts/run_experiment.py grpo_budget_memory_v1 \
   --dry-run
 ```
 
-The branch contains the training integration and dry-run configurations, but
-no local-modification GRPO checkpoint has been trained yet. See
-[`sft-checkpoint-selection.md`](sft-checkpoint-selection.md) for checkpoint
-selection, budget evidence and the holdout-reuse boundary.
+The standard and budget-only arms were each trained for 500 effective optimizer
+steps from the same SFT-e3 checkpoint. On Final-200 Clean, SFT-e3 achieved
+139/200 strict successes, standard GRPO step 450 achieved 142/200, and
+budget-only GRPO step 450 achieved 139/200. Standard GRPO increased terminal
+utility by 0.0255 while using 11.30% more input tokens than SFT. Budget-only
+used 3.78% fewer tokens than standard GRPO, but lost its three net successes
+and reduced terminal utility by 0.0344. Exact paired McNemar tests were not
+significant (`p=0.6636` for standard versus SFT and `p=0.6476` for budget
+versus standard).
 
 ## Export
 
@@ -170,5 +175,6 @@ output of `verl.model_merger` by itself: its top-level `model.safetensors`
 contains the SFT base weights, while the GRPO update remains under
 `lora_adapter/`.
 
-The reported comparison uses step 100. Select checkpoints using validation
-metrics rather than assuming that the final training step is best.
+The final comparison uses step 450 for both trained arms. Select checkpoints
+using validation metrics rather than assuming that the final training step is
+best, and retain every candidate checkpoint until selection is complete.
