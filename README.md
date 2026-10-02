@@ -317,6 +317,10 @@ bash scripts/export_grpo.sh \
   outputs/models/grpo-merged
 ```
 
+该封装会把 veRL 导出的独立 `lora_adapter/` 真正合并进顶层模型，再生成可直接由
+vLLM 加载的 checkpoint。不要直接服务 `verl.model_merger` 的原始输出；其中顶层权重
+仍是 SFT base，GRPO 更新尚未应用。
+
 启动并评估导出的模型：
 
 ```bash

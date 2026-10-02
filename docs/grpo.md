@@ -153,14 +153,22 @@ selection, budget evidence and the holdout-reuse boundary.
 
 ## Export
 
-veRL checkpoints are not directly served by the evaluation launcher. Export the
-selected actor:
+veRL checkpoints are not directly served by the evaluation launcher. They
+contain the frozen SFT weights and a separate GRPO LoRA adapter. Export the
+selected actor with the project wrapper, which first reconstructs the veRL
+checkpoint and then merges that adapter into a standalone model:
 
 ```bash
 bash scripts/export_grpo.sh \
   outputs/models/grpo/global_step_100/actor \
   outputs/models/grpo-merged
 ```
+
+Serve `outputs/models/grpo-merged` directly. The export directory also retains
+`lora_adapter/` for audit and reconstruction. Do not serve the intermediate
+output of `verl.model_merger` by itself: its top-level `model.safetensors`
+contains the SFT base weights, while the GRPO update remains under
+`lora_adapter/`.
 
 The reported comparison uses step 100. Select checkpoints using validation
 metrics rather than assuming that the final training step is best.
