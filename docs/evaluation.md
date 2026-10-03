@@ -8,7 +8,7 @@ DeepSeek V4 Flash Rubric 整理器、DeepSeek V4 Pro 轨迹 Judge 和最终聚�
 四类结果始终分栏报告，不合成一个不可解释的总分。
 
 > 文档中的 **Rubric** 指“逐任务评分标准”，不是向量检索式 RAG。它由代码候选和
-> V4 Flash 共同生成，随后冻结并由 Baseline、SFT、GRPO 三个 Actor 共享。
+> V4 Flash 共同生成，随后冻结并由 SFT-e3、标准 GRPO、budget-only GRPO 三个 Actor 共享。
 
 ## 1. 全流程
 
@@ -31,7 +31,7 @@ flowchart TD
     J --> N["四面板结果拼装"]
     M --> N
     N --> O["固定 200 题分母汇总"]
-    O --> P["按 task_id 配对比较<br/>Baseline ↔ SFT ↔ GRPO"]
+    O --> P["按 task_id 配对比较<br/>SFT-e3 ↔ 标准 GRPO ↔ budget-only GRPO"]
 ```
 
 Rubric 只需要为每个任务生成一次；它不依赖某个 Actor 的轨迹。三个模型随后在相同
@@ -86,13 +86,13 @@ Final-200 Clean 的约束如下：
 每个候选都有固定的 `candidate_id`、字段、操作符、期望值、hardness hint、Query
 span、数据来源和 selection guidance。V4 Flash 无权创造新的底层字段、操作符或值。
 
-示例 task 8187 的代码候选共有 7 条：品类、高档、结婚、陪嫁、卡通-永结同心、
-“【卡通-永结同心】2个装”选项，以及“20 元左右”的价格偏好。
+示例 task 8187 的代码候选覆盖高档、结婚、陪嫁、组合选项、酒红色木梳、礼盒和
+“20 元左右”等要求。最终是否入选仍由 Query 原文、选择规则和 Curator 共同约束。
 
 ### 3.2 V4 Flash 的完整 System Prompt
 
-当前冻结版本为 `rubric-curator-v1-draft-r4`，模型为
-`deepseek-v4-flash`。下面是代码中的完整提示词：
+当前冻结版本为 `rubric-curator-v1-draft-r6`，模型别名为
+`deepseek-flash`。下面是代码中的完整提示词：
 
 ```text
 你是当前 Shopping Agent 项目的需求 Rubric 整理器，不是自由生成需求的助手。
@@ -109,11 +109,19 @@ selection_guidance 是强制选择规则。
 - 泛化的目标商品属性不能仅凭常识或商品字段入选；
 - 同一用户要求已经由更具体的 option、规格或价格候选覆盖时，不再拆成多个含义重叠
   的泛化 core_function；
+- 若 option 的值已经包含某个 core_function 的期望值，只选择 option，不重复选择该
+  core_function；
 - 品类词不能因为碰巧等于目标商品 brand 而被选成品牌约束；
+- 使用场景或送礼对象不能替代商品品类；例如“作为新娘陪嫁物品”不能单独证明商品
+  品类就是“新娘配件”；
 - “适用于/兼容某品牌”是兼容性要求，不代表所购商品自身必须属于该品牌；
 - Query 明确给出商品类型时，品类本身是一条独立要求，应和功能、规格分别保留；
 - 组合 option 可以承载 Query 明确要求的多个规格，但不能借机加入用户未要求的品牌、
   型号、数量或实质规格；
+- 带“毫米、厘米、米、mm、cm”等单位的数字是尺寸，不是价格；只有明确的预算、价格
+  或“元/块”货币表达才能形成价格要求；
+- 不选择“套设直径、内长”等缺少数值或宾语、无法独立评分的不完整原文片段；
+- 具体 option 已承载“打孔”等安装方式或尺寸时，不再选择含义相同的 query_phrase；
 - 每条入选约束必须提供 Query 中连续、逐字存在且能独立支持该约束的非空原文片段。
 
 例：Query “推荐移动电源”中的“移动电源”是品类，不是品牌；Query “适用于海信
@@ -163,18 +171,20 @@ Flash 返回后，代码会检查：
 - 底层 `field_path / operator / expected_value` 重新从代码候选复制，不能采用模型改写值。
 
 如果 JSON 已解析但 Schema 不合法，系统最多进行有限次数的“只修 Schema”重试，
-不会放宽约束或生成默认 Rubric。最终 Rubric 按 `task_id` 缓存，Baseline、SFT、
-GRPO 共用同一份。
+不会放宽约束或生成默认 Rubric。最终 Rubric 按 `task_id` 缓存，SFT-e3、标准 GRPO、
+budget-only GRPO 共用同一份。
 
-示例 task 8187 最终从 7 条候选中选出 5 条：
+示例 task 8187 最终冻结 7 条 Rubric：
 
 | Rubric | Hardness | 要求 |
 |---|---|---|
-| `r0001` | hard | 商品品类应为新娘配件 |
+| `r0001` | hard | 应选择“【卡通-永结同心】2个装” |
 | `r0002` | hard | 商品应支持高档 |
-| `r0003` | hard | 商品应支持卡通-永结同心 |
-| `r0004` | hard | 应选择“【卡通-永结同心】2个装” |
-| `r0005` | soft | 价格倾向于 20 元左右 |
+| `r0003` | hard | 商品应为酒红色木梳 |
+| `r0004` | hard | 商品应配备礼盒 |
+| `r0005` | hard | 商品应支持结婚 |
+| `r0006` | hard | 商品应支持陪嫁 |
+| `r0007` | soft | 价格倾向于 20 元左右 |
 
 正式评测为每个 Final-200 Clean 任务生成一个 Rubric bundle；该 bundle 在模型之间冻结共享。
 
@@ -198,9 +208,9 @@ GRPO 共用同一份。
 一次 Rollout 会保存用户 Query、Assistant 文本、工具调用、Actor 实际看到的投影后
 Observation、Guard 拒绝、每步状态、终局结果和基础审计信息。
 
-示例 task 8187 的 SFT Actor 共执行 10 步：搜索一次、打开一个候选、查看
-Description/Features/Reviews、选择“【卡通-永结同心】2个装”、确认 variant
-价格为 9 元并购买。
+示例 task 8187 的 SFT Actor 找到目标商品后，选择了“礼盒装【酒红纯色梳】2个装”，
+最终价格为 17 元并购买。商品主体、礼盒、颜色和价格基本匹配，但该规格不等于 Query
+要求的“【卡通-永结同心】2个装”。
 
 ## 5. 代码硬检查
 
@@ -256,7 +266,7 @@ Pro 明确看不到：
 
 ### 6.2 Pro 的完整 System Prompt
 
-当前冻结版本为 `trajectory-judge-v1-draft-r3`：
+当前冻结版本为 `trajectory-judge-v1-draft-r5`：
 
 ```text
 你是当前 Shopping Agent / ShopSimulator 项目的离线轨迹 Judge。
@@ -269,6 +279,13 @@ Environment Reward、Reward 分项或代码判定的任务成功结论；这些�
 逐条需求状态只能是 satisfied、violated、unknown、not_applicable。没有可见证据时
 使用 unknown。每项判断尽量引用真实 event_id；不得伪造不存在的 event_id。
 
+先完成所有 rubric_assessments，再填写维度分数和错误归因，并执行以下一致性检查：
+- option Rubric 必须以 actor_visible_observation 中的 selected_options 为准；商品标题、
+  泛化 key_attributes 和 Actor 自己的 assistant_text 都不能覆盖实际已选规格；
+- 任一 hard Rubric 为 violated 时，decision_quality 不得为 2，errors.primary 不得为
+  null，overall_diagnosis 也不得声称全部硬性要求均已满足；
+- 逐项状态、五维理由、错误归因和整体诊断必须互相一致。发现冲突时先修正再输出。
+
 五个维度分别打 0、1、2 分，不加权、不计算总分：
 - search_strategy：搜索是否覆盖品类和关键条件，改写是否有效，是否机械重复；
 - candidate_utilization：是否利用可见的高匹配候选，比较是否必要且不过度；
@@ -276,8 +293,11 @@ Environment Reward、Reward 分项或代码判定的任务成功结论；这些�
 - decision_quality：最终选择、规格和购买/放弃决策是否合理；
 - termination_efficiency：是否过早购买/放弃、无效探索或耗尽步骤。
 
-错误类型必须从输入提供的 frozen_error_taxonomy 中选择；没有主要错误时 primary
-使用 null。只输出 JSON，不输出 Markdown。
+错误类型必须从输入提供的 frozen_error_taxonomy 中选择。primary 只选一个
+最能解释轨迹失败或低分的根因；secondary 最多两个次要错误，不得与
+primary 重复。没有明显错误时 primary 使用 null，secondary 必须为空列表。
+errors.evidence_event_ids 必须引用能支持归因的真实轨迹事件。
+只输出 JSON，不输出 Markdown。
 schema_version 必须是 shopping-trajectory-judge-v1。禁止输出 total_score、overall_score
 或任何综合分。
 ```
@@ -302,13 +322,13 @@ taxonomy 中给出 primary/secondary errors。代码随后验证 Rubric IDs 和 
 | 维度 | 分数 | 主要理由 |
 |---|---:|---|
 | Search Strategy | 2 | 搜索覆盖卡通、永结同心、木梳、礼盒和酒红色 |
-| Candidate Utilization | 1 | 所选商品合理，但只打开一个候选，比较不足 |
+| Candidate Utilization | 2 | 选择了排名靠前且高度匹配的候选，没有无效扩搜 |
 | Evidence Verification | 1 | 规格和价格已确认，但详情页证据有限 |
-| Decision Quality | 2 | 硬约束、选项和预算均满足 |
-| Termination Efficiency | 2 | 10 步内完成，无无效循环 |
+| Decision Quality | 0 | 最终规格违反“卡通-永结同心”这一 hard Rubric |
+| Termination Efficiency | 2 | 完成购买且没有无效循环 |
 
-五条 Rubric 均被判为 `satisfied`，没有 primary error。每一项结论都引用轨迹中的
-`e0001`–`e0010` 事件，而不是引用隐藏 Gold。
+7 条 Rubric 中 6 条被判为 `satisfied`，规格选项 `r0001` 被判为 `violated`，主要
+错误是 `wrong_option`。每一项结论都引用轨迹中的真实事件，而不是引用隐藏 Gold。
 
 ## 7. 最后统计什么？
 
@@ -347,7 +367,7 @@ Reward 与 Rubric 冲突时两者都保留。例如 Reward 判为 gold，但 Rub
 - Observation 截断和上下文使用；
 - infrastructure-invalid 数量及 task IDs。
 
-汇总时始终以 183 为固定分母。最后按 `task_id` 对 Baseline、SFT、GRPO 做配对比较，
+汇总时始终以 200 为固定分母。最后按 `task_id` 对 SFT-e3、标准 GRPO、budget-only GRPO 做配对比较，
 统计成功状态迁移、Reward type 迁移、hard violation 差值、五维分数差值、步数、
 Guard 和重复动作变化；仍然不生成一个综合总分。
 
@@ -355,9 +375,29 @@ Guard 和重复动作变化；仍然不生成一个综合总分。
 
 | Actor | Valid Judge | Not judged | Coverage |
 |---|---:|---:|---:|
-| Baseline | 198 | 2 | 99.0% |
-| SFT | 195 | 5 | 97.5% |
-| GRPO step 100 | 195 | 5 | 97.5% |
+| SFT-e3 | 198 | 2 | 99.0% |
+| 标准 GRPO step 450 | 197 | 3 | 98.5% |
+| Budget-only GRPO step 450 | 197 | 3 | 98.5% |
+
+### 7.1 Final-200 Clean 正式结果
+
+Curator 为 200 个任务冻结 1,347 条 Rubric，其中 hard 1,233 条、soft 114 条。正式
+运行调用 Curator 200 次、Trajectory Judge 592 次；8 条基础设施无效轨迹由代码直接
+标为 `not_judged`，因此没有发给 Judge。
+
+| Actor | 严格成功 | 平均效用 | 搜索 | 候选利用 | 证据核验 | 决策 | 终止效率 | hard 满足 / 未知 / 违反 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| SFT-e3 | 139/200 | 0.6024 | 1.793 | 1.783 | 1.662 | 1.545 | 1.697 | 1099 / 47 / 64 |
+| 标准 GRPO step 450 | **142/200** | **0.6279** | **1.822** | **1.797** | **1.695** | **1.548** | **1.726** | **1106 / 65 / 48** |
+| Budget-only GRPO step 450 | 139/200 | 0.5935 | 1.802 | 1.746 | 1.635 | 1.508 | 1.660 | 1073 / 66 / 76 |
+
+标准 GRPO 相比 SFT 有 12 个任务从失败转为成功、9 个从成功转为失败，净增 3 个；
+McNemar `p=0.6636`，因此只能报告小幅趋势，不能声称统计显著。它的搜索、证据核验和
+终止效率均值更高，记录的 hard 违反从 64 降至 48，但 hard 未知从 47 增至 65，
+Guard 拒绝也从 23 增至 52。Budget-only GRPO
+相对 SFT 为 7 个转好、7 个回退，净增为 0；相对标准 GRPO 的五个 Judge 维度全部下降。
+三组 Actor 最常见的主要错误均为 `wrong_option`（SFT 29、标准 GRPO 26、Budget 24），
+说明后续优化重点应是规格选择和购买前的关键证据核验。
 
 ## 8. 代码与产物
 
@@ -377,20 +417,23 @@ src/shopping_grpo/evaluation/
   comparison.py       Baseline/SFT/GRPO 配对比较
 ```
 
-正式运行会产生：
+本次正式运行保存在 `outputs/evaluation/llm-judge-final200-v1/`，主要产物为：
 
 ```text
-shared/task_facts.jsonl
-shared/rubric_candidates.jsonl
 shared/rubrics.jsonl
-MODEL/trajectories.jsonl
-MODEL/preprocessed.jsonl
+shared/curator_responses.jsonl
 MODEL/judge_requests.jsonl
 MODEL/judges.jsonl
 MODEL/evaluations.jsonl
 MODEL/evaluation_summary.json
 model_comparison.json
+api_usage.json
+pilot_manifest.json
 ```
+
+其中 `MODEL` 分别为 `sft-e3`、`grpo-standard` 和 `grpo-budget`。`pilot_manifest.json`
+沿用脚本最初的 Schema 名称，但记录的是本次 200 题正式运行的模型、Prompt 版本和完整
+task IDs；最终结果以各 Actor 的 `evaluation_summary.json` 和 `model_comparison.json` 为准。
 
 完整轨迹和 Judge 请求可能体积较大，因此属于 `outputs/` 运行产物；Git 中只提交
 紧凑的配置与结果摘要。

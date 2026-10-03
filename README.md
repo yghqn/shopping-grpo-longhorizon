@@ -120,7 +120,7 @@ AgentLoop、工具适配层、运行时兼容代码和一个带 SHA-256 校验�
 - **DeepSeek V4 Flash 是 Rubric Curator。** 代码先根据每道题的 Query 和私有
   TaskFacts 提取品类、品牌、型号、功能、规格和价格候选；Flash 只能从候选中选择
   用户真正要求的约束、去重并标注 hard/soft，不能创造新的字段或期望值。生成的
-  Rubric 冻结一次，由 Baseline、SFT 和 GRPO 共用。
+  Rubric 冻结一次，由 SFT-e3、标准 GRPO 和 budget-only GRPO 共用。
 - **DeepSeek V4 Pro 是 Trajectory Judge。** 它读取用户 Query、冻结 Rubric、
   Actor 实际看到的完整轨迹、中性终局状态和白名单代码指标，逐条判断需求是否满足，
   并从搜索策略、候选利用、证据核验、决策质量、终止效率五个维度分别打 0/1/2 分。
@@ -141,14 +141,15 @@ flowchart TD
     G --> J["四面板结果拼装"]
     I --> J
     J --> K["Reward / Rubric / Trajectory / Deterministic"]
-    K --> L["Baseline、SFT、GRPO 按 task_id 配对比较"]
+    K --> L["SFT-e3、标准 GRPO、budget-only GRPO 按 task_id 配对比较"]
 ```
 
 以 Final-200 中的 `task_id=8187` 为例，Query 要求“一对卡通-永结同心款的高档
-酒红色木梳、礼盒、陪嫁、20 元左右”。代码生成 7 条候选，V4 Flash 冻结为 5 条
-Rubric；SFT Actor 用 10 步完成搜索、详情核验、规格选择和购买；V4 Pro 最终给出
-`搜索策略 2 / 候选利用 1 / 证据核验 1 / 决策质量 2 / 终止效率 2`，并为每项判断
-引用真实的 `event_id`。
+酒红色木梳、礼盒、陪嫁、20 元左右”。V4 Flash 冻结出 6 条 hard Rubric 和 1 条
+soft Rubric。三个 Actor 都找到了正确商品，却选择了“礼盒装【酒红纯色梳】2个装”，
+没有选择 hard Rubric 指定的“【卡通-永结同心】2个装”。V4 Pro 因而将该项判为
+`violated`、主要错误标为 `wrong_option`，并把决策质量降为 0 或 1；每项结论都引用
+真实 `event_id`。这个例子说明 Judge 能识别 Reward 汇总之外的具体规格错误。
 
 Pro 看不到 Reward 分数、Gold 商品私有字段、raw Observation、成功标签或其他模型
 结果，因此不能根据答案倒推轨迹质量。最终结果分为四个独立面板：
@@ -167,6 +168,23 @@ Pro 看不到 Reward 分数、Gold 商品私有字段、raw Observation、成功
 
 
 ## 实验结果
+
+### Final-200 Clean：代码指标与 LLM-as-Judge
+
+同一份 1,347 条冻结 Rubric 用于三个 Actor；基础设施无效轨迹直接记为
+`not_judged`，但仍保留在 200 题固定分母中。正式运行完成 200 次 Curator 请求和
+592 次 Trajectory Judge 请求。
+
+| 模型 | 严格成功率 | 平均效用 | Judge 覆盖率 | 搜索 | 候选利用 | 证据核验 | 决策 | 终止效率 | hard 违反 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| SFT-e3 | 69.5% | 0.6024 | 99.0% | 1.793 | 1.783 | 1.662 | 1.545 | 1.697 | 64 |
+| 标准 GRPO step 450 | **71.0%** | **0.6279** | 98.5% | **1.822** | **1.797** | **1.695** | **1.548** | **1.726** | **48** |
+| Budget-only GRPO step 450 | 69.5% | 0.5935 | 98.5% | 1.802 | 1.746 | 1.635 | 1.508 | 1.660 | 76 |
+
+标准 GRPO 相对 SFT 净增 3 个严格成功（12 个转好、9 个回退），记录的 hard 违反少
+16 条、hard 未知多 18 条；McNemar `p=0.6636`，不足以声称显著提升。Budget-only GRPO 没有净成功增益，
+且五维轨迹质量均低于标准 GRPO，因此作为负向消融保留。三组最常见的主要错误都是
+`wrong_option`，说明当前瓶颈主要在规格选择与购买前证据核验，而不是能否完成搜索。
 
 ### 本分支：预算感知候选记忆
 
