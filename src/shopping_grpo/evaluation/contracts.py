@@ -231,6 +231,7 @@ def validate_judge_result(
     result: object,
     *,
     rubric_ids: Iterable[str],
+    rubric_definitions: Iterable[Mapping] | None = None,
     expected_task_id: int | None = None,
     expected_trajectory_id: str | None = None,
     allowed_event_ids: Iterable[str] | None = None,
@@ -390,6 +391,46 @@ def validate_judge_result(
         raise ContractValidationError(
             "judge_result.overall_diagnosis must be a string"
         )
+    if judge_status == "valid" and rubric_definitions is not None:
+        definitions = {}
+        for index, definition_value in enumerate(rubric_definitions):
+            path = f"rubric_definitions[{index}]"
+            definition = _mapping(definition_value, path)
+            rubric_id = _nonempty_text(
+                definition.get("rubric_id"), f"{path}.rubric_id"
+            )
+            hardness = _nonempty_text(
+                definition.get("hardness"), f"{path}.hardness"
+            )
+            definitions[rubric_id] = hardness
+        if set(definitions) != expected_rubrics:
+            raise ContractValidationError(
+                "rubric_definitions must match rubric_ids exactly"
+            )
+        statuses = {
+            str(item["rubric_id"]): str(item["status"])
+            for item in assessments
+        }
+        hard_violations = sorted(
+            rubric_id
+            for rubric_id, hardness in definitions.items()
+            if hardness == "hard" and statuses[rubric_id] == "violated"
+        )
+        if hard_violations:
+            decision_quality = _integer(
+                dimensions["decision_quality"].get("score"),
+                "judge_result.dimension_scores.decision_quality.score",
+            )
+            if decision_quality == 2:
+                raise ContractValidationError(
+                    "decision_quality cannot be 2 when hard Rubrics are "
+                    f"violated: {hard_violations}"
+                )
+            if primary is None:
+                raise ContractValidationError(
+                    "errors.primary is required when hard Rubrics are "
+                    f"violated: {hard_violations}"
+                )
     return deepcopy(dict(payload))
 
 

@@ -95,6 +95,53 @@ class BadcaseContractTests(unittest.TestCase):
         ):
             validate_judge_result(result, rubric_ids=[])
 
+    def test_rejects_perfect_decision_with_hard_violation(self):
+        result = _judge_result(primary=None, secondary=[])
+        result["rubric_assessments"] = [
+            {
+                "rubric_id": "r0001",
+                "status": "violated",
+                "reason": "wrong option",
+                "evidence_event_ids": [],
+            }
+        ]
+        result["dimension_scores"]["decision_quality"]["score"] = 2
+
+        with self.assertRaisesRegex(
+            ContractValidationError,
+            "decision_quality cannot be 2",
+        ):
+            validate_judge_result(
+                result,
+                rubric_ids=["r0001"],
+                rubric_definitions=[
+                    {"rubric_id": "r0001", "hardness": "hard"}
+                ],
+            )
+
+    def test_requires_primary_error_for_hard_violation(self):
+        result = _judge_result(primary=None, secondary=[])
+        result["rubric_assessments"] = [
+            {
+                "rubric_id": "r0001",
+                "status": "violated",
+                "reason": "wrong option",
+                "evidence_event_ids": [],
+            }
+        ]
+
+        with self.assertRaisesRegex(
+            ContractValidationError,
+            "errors.primary is required",
+        ):
+            validate_judge_result(
+                result,
+                rubric_ids=["r0001"],
+                rubric_definitions=[
+                    {"rubric_id": "r0001", "hardness": "hard"}
+                ],
+            )
+
     def test_summary_indexes_task_ids_by_error_type(self):
         summary = summarize_evaluations(
             expected_task_ids=[2, 1],

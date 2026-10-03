@@ -20,6 +20,15 @@ RETRYABLE_HTTP_STATUSES = frozenset(
 )
 
 
+def _supports_deepseek_thinking_control(model: str) -> bool:
+    """Recognize current and legacy DeepSeek V4 API model aliases."""
+
+    normalized = str(model).strip().casefold()
+    return normalized == "deepseek-flash" or normalized.startswith(
+        "deepseek-v4-"
+    )
+
+
 class ModelResponseError(ValueError):
     """Raised when a provider response cannot satisfy the JSON contract."""
 
@@ -94,7 +103,7 @@ class OpenAIJSONClient:
             "top_p": 1.0,
             "max_tokens": self.max_tokens,
         }
-        if self.model.casefold().startswith("deepseek-v4"):
+        if _supports_deepseek_thinking_control(self.model):
             if self.thinking:
                 payload["thinking"] = {"type": "enabled"}
                 payload["reasoning_effort"] = self.reasoning_effort

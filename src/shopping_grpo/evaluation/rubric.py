@@ -17,30 +17,42 @@ from shopping_grpo.evaluation.contracts import (
 
 TASK_FACTS_VERSION = "shopping-task-facts-v1"
 RUBRIC_CANDIDATE_VERSION = "shopping-rubric-candidates-v1"
-RUBRIC_EXTRACTOR_VERSION = "shopping-rubric-extractor-v3"
+RUBRIC_EXTRACTOR_VERSION = "shopping-rubric-extractor-v6"
 
 _NUMBER = r"(\d+(?:\.\d+)?)\s*(万|千|[kK])?"
+_CURRENCY = r"(?:元|块)"
 _UPPER_PREFIX = re.compile(
     rf"(?:预算|价格)?\s*"
     rf"(?:控制在?|要|得|需|需要)?\s*"
     rf"(?:不超过|不要超过|别超|不能超过|不得超过|不可超过|"
     rf"不高于|最高|至多|封顶(?:在)?)\s*"
-    rf"{_NUMBER}\s*元?",
+    rf"{_NUMBER}\s*{_CURRENCY}?",
 )
-_UPPER_SUFFIX = re.compile(rf"{_NUMBER}\s*元?\s*(?:以内|以下|之内)")
+_UPPER_SUFFIX = re.compile(
+    rf"{_NUMBER}\s*{_CURRENCY}?\s*(?:以内|以下|之内)"
+)
 _LOWER_PREFIX = re.compile(
     rf"(?:预算|价格)?\s*"
     rf"(?:不低于|至少|最低|不少于|高于|超过)\s*"
-    rf"{_NUMBER}\s*元?",
+    rf"{_NUMBER}\s*{_CURRENCY}?",
 )
-_LOWER_SUFFIX = re.compile(rf"{_NUMBER}\s*元?\s*(?:以上|起)")
-_PLUS_LOWER = re.compile(rf"{_NUMBER}\s*元?\s*\+")
+_LOWER_SUFFIX = re.compile(
+    rf"{_NUMBER}\s*{_CURRENCY}?\s*(?:以上|起)"
+)
+_PLUS_LOWER = re.compile(rf"{_NUMBER}\s*{_CURRENCY}?\s*\+")
 _RANGE = re.compile(
-    rf"(?:预算|价格)?(?:控制)?在?\s*{_NUMBER}\s*元?\s*"
-    rf"(?:-|~|～|至|到)\s*{_NUMBER}\s*元?(?:之间)?"
+    rf"(?:预算|价格)?(?:控制)?在?\s*{_NUMBER}\s*{_CURRENCY}?\s*"
+    rf"(?:-|~|～|至|到)\s*{_NUMBER}\s*{_CURRENCY}?(?:之间)?"
 )
+_QUERY_FILLER = re.compile(
+    r"(?:请帮我|帮我|请|推荐|寻找|找一?下?|求|想选个?|想要|希望|需要|"
+    r"配备|能作为|作为|用来|用于|物品|商品|一款|这款|该款|这件|这个|"
+    r"款的|比较|看上去)"
+)
+_QUERY_SEPARATOR = re.compile(r"[\s，,。；;：:！？!?、（）()]+")
 _AROUND = re.compile(
-    rf"(?:预算|价格)?(?:控制)?在?\s*{_NUMBER}\s*元?\s*(?:左右|上下)"
+    rf"(?:预算|价格)?(?:控制)?在?\s*{_NUMBER}\s*{_CURRENCY}?\s*"
+    rf"(?:左右|上下)"
 )
 _WAN_SHORTHAND = r"(\d+(?:\.\d+)?)\s*万\s*(\d+(?:\.\d+)?)\s*(千)?"
 _WAN_UPPER_PREFIX = re.compile(
@@ -48,10 +60,15 @@ _WAN_UPPER_PREFIX = re.compile(
     rf"(?:控制在?|要|得|需|需要)?\s*"
     rf"(?:不超过|不要超过|别超|不能超过|不得超过|不可超过|"
     rf"不高于|最高|至多|封顶(?:在)?)\s*"
-    rf"{_WAN_SHORTHAND}\s*元?"
+    rf"{_WAN_SHORTHAND}\s*{_CURRENCY}?"
 )
 _WAN_UPPER_SUFFIX = re.compile(
-    rf"{_WAN_SHORTHAND}\s*元?\s*(?:以内|以下|之内)"
+    rf"{_WAN_SHORTHAND}\s*{_CURRENCY}?\s*(?:以内|以下|之内)"
+)
+_PRICE_CUE = re.compile(r"预算|价格")
+_PRICE_CURRENCY = re.compile(_CURRENCY)
+_INCOMPLETE_QUERY_FRAGMENT = re.compile(
+    r"(?:直径约?|内长|长度|宽度|高度|尺寸|规格)$"
 )
 
 
@@ -117,6 +134,230 @@ def _exact_spans(query: str, value: str) -> list[dict]:
     ]
 
 
+def _option_query_spans(query: str, value: str) -> list[dict]:
+    """Recover exact Query evidence from decorated simulator option labels."""
+
+    spans = _exact_spans(query, value)
+    chunks = re.findall(r"[0-9A-Za-z\u4e00-\u9fff-]{2,}", str(value))
+    for chunk in chunks:
+        if re.fullmatch(r"\d+个装", chunk):
+            continue
+        if re.fullmatch(r"[宽高长厚]\d", chunk):
+            continue
+        for span in _exact_spans(query, chunk):
+            if span not in spans:
+                spans.append(span)
+    ignored_option_phrases = {
+        "一个",
+        "一片",
+        "一对",
+        "两个",
+        "产品",
+        "商品",
+        "尺寸",
+        "款式",
+        "用于",
+        "直径",
+        "规格",
+        "适用",
+        "选择",
+        "颜色",
+    }
+    for chunk in re.findall(r"[\u4e00-\u9fff]{2,}", str(value)):
+        matched = False
+        for width in range(min(6, len(chunk)), 1, -1):
+            for start in range(len(chunk) - width + 1):
+                phrase = chunk[start : start + width]
+                if phrase in ignored_option_phrases:
+                    continue
+                normalized_phrase = _normalized_constraint_text(phrase)
+                if any(
+                    normalized_phrase
+                    and normalized_phrase
+                    in _normalized_constraint_text(span.get("text"))
+                    for span in spans
+                ):
+                    continue
+                phrase_spans = _exact_spans(query, phrase)
+                if not phrase_spans:
+                    continue
+                for span in phrase_spans:
+                    if span not in spans:
+                        spans.append(span)
+                matched = True
+            if matched:
+                break
+    if re.search(r"(?:^|\D)2\s*个装", str(value)):
+        for phrase in ("一对", "两个", "2个"):
+            for span in _exact_spans(query, phrase):
+                if span not in spans:
+                    spans.append(span)
+
+    unit_names = {
+        "mm": ("mm", "毫米"),
+        "cm": ("cm", "厘米"),
+        "m": ("m", "米"),
+    }
+    for number, unit in re.findall(
+        r"(\d+(?:\.\d+)?)\s*(mm|cm|m)(?![A-Za-z])",
+        str(value),
+        flags=re.IGNORECASE,
+    ):
+        for unit_name in unit_names[unit.lower()]:
+            pattern = re.compile(
+                rf"{re.escape(number)}\s*{re.escape(unit_name)}",
+                flags=re.IGNORECASE,
+            )
+            for match in pattern.finditer(query):
+                span = _span(query, match.start(), match.end())
+                if span not in spans:
+                    spans.append(span)
+    for low, high, unit in re.findall(
+        r"(\d+(?:\.\d+)?)\s*(?:-|~|～|至|到)\s*"
+        r"(\d+(?:\.\d+)?)\s*(mm|cm|m)(?![A-Za-z])",
+        str(value),
+        flags=re.IGNORECASE,
+    ):
+        unit_alternatives = "|".join(
+            re.escape(name) for name in unit_names[unit.lower()]
+        )
+        pattern = re.compile(
+            rf"{re.escape(low)}\s*(?:-|~|～|至|到)\s*"
+            rf"{re.escape(high)}\s*(?:{unit_alternatives})",
+            flags=re.IGNORECASE,
+        )
+        for match in pattern.finditer(query):
+            span = _span(query, match.start(), match.end())
+            if span not in spans:
+                spans.append(span)
+    return sorted(spans, key=lambda item: (item["start"], item["end"]))
+
+
+def _uncovered_query_phrase_candidates(
+    query: str,
+    existing_candidates: list[Mapping],
+    *,
+    product: Mapping,
+) -> list[dict]:
+    """Expose grounded Query fragments omitted by reward-feature metadata."""
+
+    evidence_parts = [
+        product.get("title"),
+        product.get("category"),
+        product.get("brand"),
+        product.get("shop_name"),
+    ]
+    evidence_parts.extend(product.get("attributes") or [])
+    options = product.get("customization_options")
+    if isinstance(options, Mapping):
+        for values in options.values():
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                if isinstance(value, Mapping):
+                    evidence_parts.append(value.get("value"))
+                else:
+                    evidence_parts.append(value)
+    evidence = _normalized_constraint_text(
+        " ".join(str(value or "") for value in evidence_parts)
+    )
+
+    def clean_fragment(value: str) -> str:
+        text = value.strip("的地得款个")
+        text = re.sub(
+            r"^(?:我是|我想要?|我想买|我想选|最近|能不能|给我|"
+            r"想买个?|买个?|用的)+",
+            "",
+            text,
+        )
+        text = re.sub(r"(?:就行|即可)$", "", text)
+        return text.strip("的地得款个")
+
+    def grounded(value: str) -> bool:
+        normalized = _normalized_constraint_text(value)
+        if len(normalized) < 2:
+            return False
+        if normalized in evidence:
+            return True
+        units = re.findall(r"[A-Za-z0-9]+|[\u4e00-\u9fff]", normalized)
+        compact = "".join(units)
+        return any(
+            compact[index : index + 2] in evidence
+            for index in range(max(0, len(compact) - 1))
+        )
+
+    covered = [False] * len(query)
+
+    def mark(start: int, end: int) -> None:
+        for index in range(max(0, start), min(len(query), end)):
+            covered[index] = True
+
+    for candidate in existing_candidates:
+        for span in candidate.get("query_spans") or []:
+            if isinstance(span, Mapping):
+                mark(int(span.get("start", 0)), int(span.get("end", 0)))
+    for pattern in (_QUERY_FILLER, _QUERY_SEPARATOR):
+        for match in pattern.finditer(query):
+            mark(match.start(), match.end())
+
+    fragments = []
+    start = None
+    for index in range(len(query) + 1):
+        is_open = index < len(query) and not covered[index]
+        if is_open and start is None:
+            start = index
+        if not is_open and start is not None:
+            raw_text = query[start:index]
+            text = clean_fragment(raw_text)
+            text_start = query.find(text, start, index) if text else -1
+            if (
+                len(text) >= 2
+                and text_start >= 0
+                and not re.fullmatch(r"[0-9.]+", text)
+                and not _INCOMPLETE_QUERY_FRAGMENT.search(text)
+                and text
+                not in {
+                    "比如",
+                    "那种",
+                    "这种",
+                    "适合",
+                    "同时带有",
+                    "颜色为",
+                    "配置为",
+                    "预算在",
+                    "价格预算在",
+                    "材质为",
+                    "采用",
+                    "结构",
+                    "成分",
+                    "品牌",
+                }
+                and grounded(text)
+            ):
+                fragments.append(
+                    {
+                        "constraint_type": "query_phrase",
+                        "description_hint": f"商品应满足明确要求：{text}",
+                        "field_path": "product.visible_evidence",
+                        "operator": "semantically_supports",
+                        "expected_value": text,
+                        "hardness_hint": "hard",
+                        "hardness_source": "explicit_query_phrase_rule",
+                        "query_spans": [
+                            _span(query, text_start, text_start + len(text))
+                        ],
+                        "data_sources": ["query"],
+                        "selection_guidance": (
+                            "仅当该原文片段表达尚未被更具体候选覆盖的独立商品"
+                            "要求时选择；意图套话、使用场景连接词和已被 option、"
+                            "品类、功能或价格候选覆盖的内容不得重复选择。"
+                        ),
+                    }
+                )
+            start = None
+    return fragments
+
+
 def extract_price_candidates(query: str) -> list[dict]:
     """Extract explicit price semantics for Rubric candidates, not Reward."""
 
@@ -130,9 +371,15 @@ def extract_price_candidates(query: str) -> list[dict]:
             for previous_start, previous_end in occupied
         )
 
+    def has_price_context(match: re.Match) -> bool:
+        text = match.group(0)
+        return bool(
+            _PRICE_CUE.search(text) or _PRICE_CURRENCY.search(text)
+        )
+
     for pattern in (_WAN_UPPER_PREFIX, _WAN_UPPER_SUFFIX):
         for match in pattern.finditer(query):
-            if overlaps(match):
+            if overlaps(match) or not has_price_context(match):
                 continue
             value = _scaled_wan_shorthand(
                 match.group(1),
@@ -161,6 +408,8 @@ def extract_price_candidates(query: str) -> list[dict]:
                 }
             )
     for match in _RANGE.finditer(query):
+        if not has_price_context(match):
+            continue
         low = _scaled(match.group(1), match.group(2))
         high = _scaled(match.group(3), match.group(4))
         if low <= 0 or high < low:
@@ -226,7 +475,7 @@ def extract_price_candidates(query: str) -> list[dict]:
         ),
     ):
         for match in pattern.finditer(query):
-            if overlaps(match):
+            if overlaps(match) or not has_price_context(match):
                 continue
             occupied.append((match.start(), match.end()))
             value = _scaled(match.group(1), match.group(2))
@@ -385,6 +634,10 @@ def extract_rubric_candidates(task_facts: object) -> dict:
                 "hardness_source": "explicit_model_rule",
                 "query_spans": _exact_spans(query, value),
                 "data_sources": ["reward_features.expected_model", "query"],
+                "selection_guidance": (
+                    "仅当 Query 将该值明确作为型号时选择；若该值只是材质牌号且"
+                    "已有更完整的材质或功能候选，应选择后者。"
+                ),
             }
         )
 
@@ -439,7 +692,7 @@ def extract_rubric_candidates(task_facts: object) -> dict:
                         "expected_value": option_value,
                         "hardness_hint": "hard",
                         "hardness_source": "explicit_option_rule",
-                        "query_spans": _exact_spans(query, option_value),
+                        "query_spans": _option_query_spans(query, option_value),
                         "data_sources": [
                             "instruction.instruction_options",
                             "target_product.customization_options",
@@ -465,7 +718,7 @@ def extract_rubric_candidates(task_facts: object) -> dict:
                     "expected_value": option_value,
                     "hardness_hint": "hard",
                     "hardness_source": "explicit_option_rule",
-                    "query_spans": _exact_spans(query, option_value),
+                    "query_spans": _option_query_spans(query, option_value),
                     "data_sources": [
                         "instruction.instruction_options",
                         "query",
@@ -474,6 +727,13 @@ def extract_rubric_candidates(task_facts: object) -> dict:
             )
 
     raw_candidates.extend(extract_price_candidates(query))
+    raw_candidates.extend(
+        _uncovered_query_phrase_candidates(
+            query,
+            raw_candidates,
+            product=product,
+        )
+    )
     candidates = []
     seen = set()
     for raw in raw_candidates:
@@ -510,6 +770,98 @@ def _spans_from_quote(query: str, quote: str) -> list[dict]:
     if not quote:
         return []
     return _exact_spans(query, quote)
+
+
+def _normalized_constraint_text(value: object) -> str:
+    """Normalize labels only for deterministic duplicate suppression."""
+
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "", value).lower()
+
+
+_GENERIC_OPTION_OVERLAP = {
+    "一个",
+    "一片",
+    "一对",
+    "两个",
+    "产品",
+    "商品",
+    "安装",
+    "尺寸",
+    "款式",
+    "用于",
+    "直径",
+    "规格",
+    "适用",
+    "选择",
+    "颜色",
+}
+
+
+def _shares_specific_option_text(left: object, right: object) -> bool:
+    left_text = _normalized_constraint_text(left)
+    right_text = _normalized_constraint_text(right)
+    if not left_text or not right_text:
+        return False
+    if len(left_text) <= len(right_text):
+        shorter, longer = left_text, right_text
+    else:
+        shorter, longer = right_text, left_text
+    for width in range(min(6, len(shorter)), 1, -1):
+        for start in range(len(shorter) - width + 1):
+            token = shorter[start : start + width]
+            if token in _GENERIC_OPTION_OVERLAP:
+                continue
+            if token in longer:
+                return True
+    return False
+
+
+def _drop_constraints_shadowed_by_options(
+    selected_constraints: list[Mapping],
+    *,
+    candidates_by_id: Mapping[str, Mapping],
+) -> list[Mapping]:
+    """Keep a specific option instead of double-counting its generic label.
+
+    Reward metadata can expose the same user requirement both as a generic
+    ``core_function`` and as the exact purchasable ``option``.  The Curator is
+    asked to select the most specific candidate, but this deterministic guard
+    keeps one missed instruction from inflating the frozen Rubric.
+    """
+
+    selected_options = []
+    for selected in selected_constraints:
+        candidate = candidates_by_id[str(selected["candidate_id"])]
+        if candidate.get("constraint_type") != "option":
+            continue
+        normalized = _normalized_constraint_text(candidate.get("expected_value"))
+        if normalized:
+            selected_options.append(normalized)
+
+    filtered = []
+    for selected in selected_constraints:
+        candidate = candidates_by_id[str(selected["candidate_id"])]
+        constraint_type = candidate.get("constraint_type")
+        if constraint_type == "core_function":
+            normalized = _normalized_constraint_text(
+                candidate.get("expected_value")
+            )
+            if normalized and any(
+                normalized in option for option in selected_options
+            ):
+                continue
+        if constraint_type == "query_phrase" and any(
+            _shares_specific_option_text(
+                candidate.get("expected_value"),
+                option,
+            )
+            for option in selected_options
+        ):
+            continue
+        filtered.append(selected)
+    return filtered
 
 
 def materialize_rubric_bundle(
@@ -558,8 +910,12 @@ def materialize_rubric_bundle(
         candidate_ids=by_id,
     )
     query = str(task_facts.get("query") or "")
+    selected_constraints = _drop_constraints_shadowed_by_options(
+        response["selected_constraints"],
+        candidates_by_id=by_id,
+    )
     rubrics = []
-    for selected in response["selected_constraints"]:
+    for selected in selected_constraints:
         candidate = by_id[selected["candidate_id"]]
         hardness = selected["hardness"]
         quote_spans = _spans_from_quote(query, selected.get("query_quote", ""))

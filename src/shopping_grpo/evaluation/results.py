@@ -153,6 +153,7 @@ def assemble_task_evaluation(
     judge = validate_judge_result(
         judge_result,
         rubric_ids=rubric_ids(rubric),
+        rubric_definitions=rubric["rubrics"],
         expected_task_id=task_id,
         expected_trajectory_id=trajectory_id,
         allowed_event_ids=[

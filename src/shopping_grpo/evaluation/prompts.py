@@ -14,8 +14,8 @@ from shopping_grpo.evaluation.contracts import (
 )
 from shopping_grpo.evaluation.trajectory import NORMALIZED_TRAJECTORY_VERSION
 
-RUBRIC_CURATOR_PROMPT_VERSION = "rubric-curator-v1-draft-r4"
-TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft-r4"
+RUBRIC_CURATOR_PROMPT_VERSION = "rubric-curator-v1-draft-r6"
+TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft-r5"
 _JUDGE_VISIBLE_ERROR_TAXONOMY = ERROR_TAXONOMY - {
     "reward_rubric_disagreement",
     "infrastructure_invalid",
@@ -36,11 +36,19 @@ selection_guidance 是强制选择规则。
 - 泛化的目标商品属性不能仅凭常识或商品字段入选；
 - 同一用户要求已经由更具体的 option、规格或价格候选覆盖时，不再拆成多个含义重叠
   的泛化 core_function；
+- 若 option 的值已经包含某个 core_function 的期望值，只选择 option，不重复选择该
+  core_function；
 - 品类词不能因为碰巧等于目标商品 brand 而被选成品牌约束；
+- 使用场景或送礼对象不能替代商品品类；例如“作为新娘陪嫁物品”不能单独证明商品
+  品类就是“新娘配件”；
 - “适用于/兼容某品牌”是兼容性要求，不代表所购商品自身必须属于该品牌；
 - Query 明确给出商品类型时，品类本身是一条独立要求，应和功能、规格分别保留；
 - 组合 option 可以承载 Query 明确要求的多个规格，但不能借机加入用户未要求的品牌、
   型号、数量或实质规格；
+- 带“毫米、厘米、米、mm、cm”等单位的数字是尺寸，不是价格；只有明确的预算、价格
+  或“元/块”货币表达才能形成价格要求；
+- 不选择“套设直径、内长”等缺少数值或宾语、无法独立评分的不完整原文片段；
+- 具体 option 已承载“打孔”等安装方式或尺寸时，不再选择含义相同的 query_phrase；
 - 每条入选约束必须提供 Query 中连续、逐字存在且能独立支持该约束的非空原文片段。
 
 例：Query “推荐移动电源”中的“移动电源”是品类，不是品牌；Query “适用于海信
@@ -77,6 +85,13 @@ Environment Reward、Reward 分项或代码判定的任务成功结论；这些�
 
 逐条需求状态只能是 satisfied、violated、unknown、not_applicable。没有可见证据时
 使用 unknown。每项判断尽量引用真实 event_id；不得伪造不存在的 event_id。
+
+先完成所有 rubric_assessments，再填写维度分数和错误归因，并执行以下一致性检查：
+- option Rubric 必须以 actor_visible_observation 中的 selected_options 为准；商品标题、
+  泛化 key_attributes 和 Actor 自己的 assistant_text 都不能覆盖实际已选规格；
+- 任一 hard Rubric 为 violated 时，decision_quality 不得为 2，errors.primary 不得为
+  null，overall_diagnosis 也不得声称全部硬性要求均已满足；
+- 逐项状态、五维理由、错误归因和整体诊断必须互相一致。发现冲突时先修正再输出。
 
 五个维度分别打 0、1、2 分，不加权、不计算总分：
 - search_strategy：搜索是否覆盖品类和关键条件，改写是否有效，是否机械重复；
