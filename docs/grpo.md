@@ -175,6 +175,14 @@ output of `verl.model_merger` by itself: its top-level `model.safetensors`
 contains the SFT base weights, while the GRPO update remains under
 `lora_adapter/`.
 
-The final comparison uses step 450 for both trained arms. Select checkpoints
-using validation metrics rather than assuming that the final training step is
-best, and retain every candidate checkpoint until selection is complete.
+The final comparison uses step 450 for both trained arms. In the standard run,
+step 300 had the highest logged validation reward (0.466710), but its actor
+weights were removed by retention. Step 450 (0.402611) was selected among the
+remaining candidates, not as the best checkpoint across the full run. The budget
+run also used staged resumes with a different scheduling history; the comparison
+does not isolate the token penalty as a single causal variable.
+
+Select checkpoints using validation metrics rather than assuming that the final
+training step is best, and retain candidates until selection is complete. The
+[published aggregate summary](../experiments/final200-comparison.json) records
+the selected models, paired statistics and source artifact hashes.

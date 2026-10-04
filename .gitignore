@@ -16,6 +16,8 @@ dist/
 *.log
 
 outputs/
+/output/
+/tmp/
 checkpoints/
 models/
 swanlog/

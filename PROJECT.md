@@ -1,4 +1,4 @@
-# 预算感知购物 Agent
+# 面向长程购物 Agent 的可复现后训练与评测（Agentic RL）
 
 本目录是基于 Shopping GRPO 的独立改造项目，遵循 `Baseline → SFT → GRPO → Evaluation`。当前已完成 Qwen3.5-2B 三轮 QLoRA SFT、标准与预算感知 GRPO、checkpoint 选择和 Final-200 Clean 配对评测。SFT 在单张 RTX 4090 24GB 上完成，24K 长轨迹 GRPO 在单张 RTX PRO 6000 96GB 上完成。
 
@@ -15,6 +15,7 @@
 - 增加 `grpo_budget_only_v1` 和 `grpo_budget_memory_v1` 两个显式训练 arm；前者是当前主实验，后者保留为负向消融。
 - 在相同 SFT-e3 起点上完成 500 个有效更新的标准 GRPO 与 budget-only GRPO，并用独立的 Final-200 Clean 做最终比较。
 - 修复 Qwen3.5 大词表 PPO 输出头、entropy 显存、checkpoint resume 和 veRL 分离 LoRA 导出问题；最终可服务模型会真正合并 GRPO adapter。
+- 沿用上游 Curator / Judge 评测设计，完成本分支规则提取、输入校验与正式运行：200 题共享 1,347 条冻结 Rubric，三组轨迹共调用 Judge 592 次。
 
 ## 关键结果
 
@@ -27,6 +28,8 @@ Candidate Memory 在弱 base model 上曾提供正向开发信号，但在 SFT-e
 Final-200 Clean 的固定分母结果为：SFT-e3 139/200（69.5%），标准 GRPO step 450 为 142/200（71.0%），budget-only GRPO step 450 为 139/200（69.5%）。标准 GRPO 相对 SFT 净增 3 个成功任务、平均终局效用增加 0.0255，但输入 token 增加 11.30%；配对 McNemar `p=0.6636`，只支持小幅正向趋势。
 
 Budget-only 相对标准 GRPO 减少 3.78% 输入 token 和 31 次 Guard 拒绝，但丢失 3 个净成功任务，终局效用下降 0.0344；相对 SFT 则成功数不变、输入 token 增加 7.09%。因此简单的封顶 token 软成本没有形成更优 Pareto 点，当前最佳成功率模型是标准 GRPO，最佳成本效益基线仍是 SFT-e3。
+
+完整聚合指标、逐任务配对检验与文件哈希见 [正式结果摘要](experiments/final200-comparison.json)。表中 GRPO 均评估 step 450；标准组验证分最高的 step 300 未保留，step 450 仅为剩余候选中的较优检查点。Budget 组经历分段续训，且未开展多随机种子复验，因此不能将当前比较解释为预算惩罚的严格因果效应。
 
 ## 数据边界
 

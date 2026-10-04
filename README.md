@@ -1,483 +1,210 @@
-# Shopping GRPO
-
-> **本地改造说明**：当前分支已完成 Qwen3.5-2B 的 24,576-token、3-epoch QLoRA SFT，以及单卡 96GB 上各 500 个有效更新的标准和 budget-only GRPO。Final-200 Clean 上，SFT-e3、标准 GRPO step 450、budget-only GRPO step 450 的严格成功率分别为 69.5%、71.0% 和 69.5%。标准 GRPO 小幅提高成功与效用但增加 11.30% 输入 token；预算软成本相对标准 GRPO 减少 3.78% token，却丢失全部净成功增益。配对差异均不显著，当前结论是明确的成功率—推理成本权衡，而不是预算方法胜出。下文未特别标注的训练结果属于固定上游版本。
-
-<div align="center">
+# 面向长程购物 Agent 的可复现后训练与评测（Agentic RL）
 
 **简体中文** · [English](README.en.md)
 
-<br />
+基于 **Qwen3.5-2B** 和 ShopSimulator，复现并扩展
+**Baseline → SFT → GRPO → Evaluation**：
+在单卡上完成长上下文后训练，用固定测试集、配对统计与 LLM-as-Judge
+比较任务成功率、过程质量和推理成本。
 
-面向长程购物 Agent 的可复现后训练与评测项目
+本项目是 [Shopping GRPO](https://github.com/YYHDBL/shopping-grpo-longhorizon)
+的**复现与二次开发**。购物环境、教师数据和基础训练/评测流程来自上游；
+本分支的工作集中在单卡适配、训练与导出可靠性、预算/记忆消融及评测落地。
+固定来源提交与资产哈希见 [UPSTREAM.json](UPSTREAM.json)。
 
-<br />
+[正式结果](#正式结果) · [贡献边界](#贡献边界) · [训练与评测设计](#训练与评测设计) ·
+[复现入口](#复现入口) · [文档与代码](#文档与代码)
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
-[![LoRA SFT](https://img.shields.io/badge/Post--training-LoRA%20SFT-7B61FF)](docs/sft.md)
-[![veRL](https://img.shields.io/badge/veRL-0.8.0-0E8A16)](https://github.com/verl-project/verl)
-[![ShopSimulator](https://img.shields.io/badge/Environment-ShopSimulator%20v2.1-4C78A8)](https://arxiv.org/pdf/2601.18225)
-[![Benchmark](https://img.shields.io/badge/Benchmark-Final--200--Clean-F59E0B)](docs/evaluation-dataset.md)
+## 正式结果
 
-<br />
+以下均为**本分支实际运行结果**，使用同一份 Final-200 Clean 的 200 个任务。
+严格成功要求完整的 `gold_purchase` 终局且 `reward_valid=true`；
+缺失、报错和失败任务仍计入分母。
 
-教师轨迹与 LoRA SFT → veRL 在线 GRPO → Final-200 Clean Benchmark 的可审计对比
+| 模型 | 严格成功 | 成功率 | 平均终局效用 | 平均环境步数 | 总输入 token |
+|---|---:|---:|---:|---:|---:|
+| SFT-e3 | 139/200 | 69.5% | 0.6024 | 9.825 | 12,081,725 |
+| 标准 GRPO · step 450 | **142/200** | **71.0%** | **0.6279** | 10.095 | 13,446,494 |
+| Budget-only GRPO · step 450 | 139/200 | 69.5% | 0.5935 | 9.945 | 12,938,476 |
 
-</div>
+- **标准 GRPO vs SFT：** 12 题改善、9 题回退，净增 3 题；输入 token 增加
+  11.30%。Exact McNemar `p=0.6636`，未达到统计显著。
+- **Budget-only vs 标准 GRPO：** 输入 token 减少 3.78%，成功率下降 1.5 个百分点，
+  平均效用下降 0.0344；本次实验不支持预算方案整体优于标准 GRPO。
+- **Budget-only vs SFT：** 成功率相同，输入 token 增加 7.09%，未形成更优的成功率—成本组合。
 
-![Shopping GRPO project overview](docs/images/project-overview-pipeline.png)
+当前证据支持小幅成功率变化与成本权衡，不支持“显著提升”或“超过上游”的结论。
+机器可读的汇总、配对检验和产物哈希见
+[正式结果摘要](experiments/final200-comparison.json)。
 
-## ShopSimulator 是什么？
+### 结果的适用范围
 
-[ShopSimulator](https://arxiv.org/pdf/2601.18225) 是一个用于评估长程购物
-Agent 的大规模中文购物环境。每个任务会给出一段用户需求，其中可能包含商品类别、
-预算、品牌、型号、核心功能以及颜色、尺寸、容量、套餐等具体规格。
+- 两组 GRPO 均从同一 SFT-e3 出发，训练计数达到 step 500；表中评估的是 step 450。
+- 标准组验证分最高的 step 300 已被检查点保留策略清理；step 450 是
+  **剩余候选中的较优检查点**，不能代表完整训练过程的最优性能。
+- Budget 组经历分段续训，训练调度历史与标准组不同；未做多随机种子复验。
+  表格是当前检查点的配对比较，不是预算惩罚的严格因果证明。
+- 三组最终评测均关闭候选记忆与累计输入硬上限。训练时的 token 软惩罚
+  与开发阶段的 100,000-token 硬停止是不同干预。
+- 早期 GRPO 导出未合并 Adapter 的结果已排除；表中只使用正确合并权重后的评测。
 
-Agent 不能只生成一句“推荐购买某商品”，而是必须真正与环境交互：
+## 贡献边界
 
-1. 根据需求搜索商品；
-2. 打开并比较候选商品；
-3. 查看描述、参数和可选规格；
-4. 选择正确的商品变体；
-5. 购买满足约束的商品，或者在证据充分时合理终止。
+| 部分 | 上游基础 | 本分支完成的工作 |
+|---|---|---|
+| 环境与数据 | ShopSimulator、Reward v3、教师轨迹、Observation 投影 | 固定运行时与数据哈希，检查训练/测试任务隔离 |
+| SFT | Action-only LoRA SFT | QLoRA + Liger 单卡 24GB 适配、24K 训练、开发集检查点比较 |
+| 在线 GRPO | veRL、工具适配与组内奖励优化 | 大词表输出头/熵显存修复、序列对齐、动态采样诊断、续训与导出合并修复 |
+| 预算与记忆 | 上下文截断、已有长度惩罚 | 候选证据记忆、动作合法性隔离、累计输入 token 成本及配对消融 |
+| 评测 | 确定性奖励、Rubric Curator / Trajectory Judge 设计 | 本分支候选提取与提示修订、输入校验、冻结规则共享、三组正式运行与统计分析 |
 
-这类任务同时考察指令理解、工具调用、长上下文管理、约束满足和终止决策。项目内嵌
-了冻结的 ShopSimulator Environment v2.1 源码和商品数据，位于
-[`environments/ShopSimulator/`](environments/ShopSimulator/)，不需要用户再单独
-克隆或修改一份环境仓库。
+这里的预算指**推理所消耗的累计输入 token**，与用户的商品价格预算分开统计。
+本项目没有训练独立 Reward Model；LLM-as-Judge 用于离线评测，不作为本次 GRPO 的训练奖励。
 
-![ShopSimulator 环境概览](docs/images/shopsimulator-overview.png)
+## 训练与评测设计
 
-## 项目做了什么？
-
-项目按照一条连续的后训练流水线组织：
+Agent 需要完成搜索、查看商品、核验属性、选择规格和购买等多轮环境交互。
+运行时固定为 **Environment v2.1 / Reward v3 / observation v2 / tool schema v2**。
 
 ```mermaid
 flowchart LR
-    A[教师模型采集轨迹] --> B[Reward v3 回放过滤]
-    B --> C[Action-only SFT 数据]
-    C --> D[LoRA SFT]
-    D --> E[veRL 在线 GRPO]
-    F[ShopSimulator v2.1] --> E
-    G[Final-200 Clean 测试任务] --> H[统一评估流水线]
-    I[Base Model] --> H
-    D --> H
-    E --> H
+    B["Baseline：原始模型"] --> S["SFT：教师动作监督"]
+    S --> G["GRPO：在线多轮采样与奖励优化"]
+    G --> E["Evaluation：固定测试集"]
+    S --> E
+    E --> C["代码指标与逐任务配对统计"]
+    E --> J["冻结 Rubric 与轨迹 Judge"]
 ```
 
-| 阶段 | 目标 | 入口 | 详细文档 |
-|---|---|---|---|
-| Baseline | 测量原始 Qwen3.5-2B 的工具使用能力 | `bash scripts/baseline.sh` | [评估](docs/evaluation.md) |
-| SFT | 从高质量教师轨迹学习合法、完整的购物行为 | `bash scripts/sft.sh` | [SFT](docs/sft.md) |
-| GRPO | 在真实环境 Rollout 中优化 Reward v3 | `bash scripts/grpo.sh` | [GRPO](docs/grpo.md) |
-| Evaluation | 使用同一批 Final-200 Clean 留出任务公平比较模型 | `bash scripts/evaluate.sh NAME` | [评估](docs/evaluation.md) |
+| 配置 | 本次执行 |
+|---|---|
+| 基础模型 | Qwen/Qwen3.5-2B |
+| SFT 数据 | 800 条训练 / 200 条验证；24,576-token 上限保留 799 条训练轨迹 |
+| SFT 训练 | QLoRA、Liger、bf16、梯度检查点；3 epochs；batch 1、累积 8 |
+| SFT 硬件 | RTX 4090 24GB；峰值显存 18.2 GiB；训练约 4 小时 |
+| GRPO 数据 | 1,000 条训练任务 / 50 条验证任务 |
+| GRPO 采样 | 每个 prompt 4 条轨迹；prompt batch 2；最多补采 3 批 |
+| GRPO 优化 | LoRA；学习率 `1e-6`；对称 PPO clipping；KL loss / KL reward 均关闭 |
+| GRPO 显存配置 | Torch 融合输出头、分块熵计算、checkpointing、remove padding、单轨迹 microbatch |
+| GRPO 硬件 | RTX PRO 6000 Blackwell 96GB；两组均训练至 step 500 |
+| Budget-only | 累计输入超过 60,000 token 后，每 1,000 token 扣 0.001，最多扣 0.1 |
+| 最终评测 | 200 题；temperature 0；最多 35 个环境步骤；上下文 24,576 |
 
-### SFT 数据是怎么收集的？
+SFT 的用户与工具 Observation token 不计入监督 loss。
+动态采样过滤同奖励组与采样无效组，记录补采和跳过原因；跳过采样尝试不等同于一次
+optimizer 更新。当前补丁与诊断格式见 [GRPO 文档](docs/grpo.md)。
 
-当前数据使用 `deepseek-v4-flash` 作为教师模型，在 ShopSimulator
-Environment v2.1 中采集：
+40 题开发集已经用于检查点与方法选择，不能当作新的未见测试集。
+[数据隔离协议](docs/evaluation-dataset.md)和
+[SFT 检查点选择](docs/sft-checkpoint-selection.md)说明具体边界。
+候选记忆在 SFT-e1 开发集上将严格成功由 18/40 降至 14/40，因此未进入最终两组 GRPO；
+[消融分析](docs/sft-e1-ablation.md)保留了负向证据。
 
-- 共获得 2,498 条原始任务轨迹；
-- 每条轨迹在采集时都真实执行环境动作，再按 Reward v3 终局结果验收；
-- 其中 1,026 条通过严格验收，本次固定使用 1,000 条；
-- 最终划分为 800 条训练数据和 200 条验证数据，并与 GRPO、Final-200 Clean
-  保持 task_id 零重叠。
+### LLM-as-Judge
 
-仓库已提供可断点续跑的采集入口：
+沿用上游的两角色设计，为三组已保存的轨迹增加独立评测面板：
 
-```bash
-python scripts/collect_sft_data.py \
-  --tasks data/grpo/train.jsonl \
-  --output-dir outputs/sft-collection \
-  --target-accepted 1000 \
-  --workers 4
-```
+1. **Rubric Curator（DeepSeek Flash）：** 从代码提取的候选中选择用户约束，
+   去重并标注 hard/soft；为 200 题冻结 1,347 条规则，三组 Actor 共用。
+2. **Trajectory Judge（DeepSeek V4 Pro）：** 读取冻结规则、Actor 可见轨迹、
+   中性终局与白名单指标，完成约束判定和五维 0/1/2 评分。
+   输入排除私有 Gold 字段、奖励、严格成功标签与其他模型结果。
+3. **代码聚合：** 校验结构化输出及证据引用，分别报告奖励、约束满足、轨迹质量和确定性指标；
+   不把它们混成一个总分。
 
-SFT 只在 Assistant 动作 token 上计算 Loss，用户指令和环境 Observation 会被
-Mask。这样模型学习的是可执行的工具策略，而不是背诵环境返回内容。数据哈希、接受率
-和采集审计见[数据采集文档](docs/data-collection.md)。
+正式运行调用 Curator 200 次、Judge 592 次。8 条基础设施无效轨迹由代码标记为
+`not_judged`，仍计入各组 200 题分母；下表五维均值仅针对已判定轨迹，需结合覆盖率阅读。
 
-### GRPO 是怎么训练的？
+| Actor | Judge 覆盖 | 搜索 | 候选利用 | 证据核验 | 决策 | 终止效率 |
+|---|---:|---:|---:|---:|---:|---:|
+| SFT-e3 | 198/200 | 1.793 | 1.783 | 1.662 | 1.545 | 1.697 |
+| 标准 GRPO | 197/200 | 1.822 | 1.797 | 1.695 | 1.548 | 1.726 |
+| Budget-only GRPO | 197/200 | 1.802 | 1.746 | 1.635 | 1.508 | 1.660 |
 
-GRPO 从合并后的 SFT 模型开始。veRL 在 ShopSimulator 中为每个 Prompt 在线生成
-四条轨迹，环境用确定性的 Reward v3 评估最终购买结果、约束满足程度和终止行为。
-训练不使用额外的 LLM-as-a-Judge Reward Model。
+三组最常见的主要失败类型均为 `wrong_option`，指向规格选择和购买前证据核验。
+完整 Prompt、规则版本、输入边界和统计口径见 [评测文档](docs/evaluation.md)。
+Judge 分数是补充诊断，不替代环境严格成功，也尚未经过独立人工一致性验证。
 
-本仓库没有复制 veRL 源码，而是固定安装 `verl==0.8.0`，并保留项目自己的
-AgentLoop、工具适配层、运行时兼容代码和一个带 SHA-256 校验的小补丁。详细配置见
-[GRPO 文档](docs/grpo.md)。
+## 复现入口
 
-本分支提供两个预算感知命名实验。`grpo_budget_only_v1` 从入选的 SFT-e3 合并模型
-开始，关闭候选记忆，只对超过 60,000 的累计输入 token 施加封顶软惩罚；
-`grpo_budget_memory_v1` 同时开启 1,024-token 候选记忆，保留为负向消融。最终执行了
-标准 GRPO 和 `grpo_budget_only_v1` 各 500 个有效更新；Final-200 Clean 表明标准 GRPO
-从 69.5% 提升至 71.0%，预算软成本则回到 69.5%，只收回部分推理成本。
+以下是供读者选择执行的入口；安装、训练、合并、环境评测和付费 Judge 调用是独立步骤。
+**克隆仓库不会自动触发训练或 API 请求。**
 
-### 评估流水线是怎么设计的？
+训练环境为 Linux + NVIDIA GPU，主环境 Python 3.12，ShopSimulator 隔离环境 Python 3.10。
+磁盘需求随检查点保留数量增加，本次单个 GRPO 检查点约 11GB。
+模型权重、完整轨迹和运行日志不包含在 Git 仓库中；已有本地产物路径不代表可公开下载的文件。
 
-正式评估由“代码硬检查 + 两个 LLM-as-Judge + 固定分母聚合”组成。两个 Judge
-职责不同：
-
-- **DeepSeek V4 Flash 是 Rubric Curator。** 代码先根据每道题的 Query 和私有
-  TaskFacts 提取品类、品牌、型号、功能、规格和价格候选；Flash 只能从候选中选择
-  用户真正要求的约束、去重并标注 hard/soft，不能创造新的字段或期望值。生成的
-  Rubric 冻结一次，由 SFT-e3、标准 GRPO 和 budget-only GRPO 共用。
-- **DeepSeek V4 Pro 是 Trajectory Judge。** 它读取用户 Query、冻结 Rubric、
-  Actor 实际看到的完整轨迹、中性终局状态和白名单代码指标，逐条判断需求是否满足，
-  并从搜索策略、候选利用、证据核验、决策质量、终止效率五个维度分别打 0/1/2 分。
-
-这里的 Rubric 是逐任务评分标准，不是向量检索式 RAG。
-
-```mermaid
-flowchart TD
-    A["Benchmark test_id"] --> B["私有 TaskFacts"]
-    B --> C["代码提取 Rubric 候选"]
-    C --> D["V4 Flash 整理并冻结 Rubric"]
-    A --> E["Actor + ShopSimulator Rollout"]
-    E --> F["轨迹规范化 + Action Guard + 确定性硬检查"]
-    F -->|基础设施无效| G["not_judged，仍计入 Final-200 Clean 分母"]
-    F -->|检查通过| H["移除 Reward、Gold、raw observation"]
-    D --> H
-    H --> I["V4 Pro 逐需求判断 + 五维评分 + 错误分类"]
-    G --> J["四面板结果拼装"]
-    I --> J
-    J --> K["Reward / Rubric / Trajectory / Deterministic"]
-    K --> L["SFT-e3、标准 GRPO、budget-only GRPO 按 task_id 配对比较"]
-```
-
-以 Final-200 中的 `task_id=8187` 为例，Query 要求“一对卡通-永结同心款的高档
-酒红色木梳、礼盒、陪嫁、20 元左右”。V4 Flash 冻结出 6 条 hard Rubric 和 1 条
-soft Rubric。三个 Actor 都找到了正确商品，却选择了“礼盒装【酒红纯色梳】2个装”，
-没有选择 hard Rubric 指定的“【卡通-永结同心】2个装”。V4 Pro 因而将该项判为
-`violated`、主要错误标为 `wrong_option`，并把决策质量降为 0 或 1；每项结论都引用
-真实 `event_id`。这个例子说明 Judge 能识别 Reward 汇总之外的具体规格错误。
-
-Pro 看不到 Reward 分数、Gold 商品私有字段、raw Observation、成功标签或其他模型
-结果，因此不能根据答案倒推轨迹质量。最终结果分为四个独立面板：
-
-1. Environment Reward 与终局；
-2. Query Rubric 的 hard/soft 满足情况和 Reward disagreement；
-3. Pro Judge 五维分布与错误类型；
-4. 步数、工具、Guard、重复、上下文和基础设施指标。
-
-四部分不会合成一个总分。缺失、报错和 `not_judged` 任务仍保留在 Final-200 Clean 分母中。
-完整数据流、两个模型的完整 Prompt、输入隔离规则、示例 Rubric 和最终统计口径见
-[评估流水线文档](docs/evaluation.md)。当前集的筛选依据见
-[Final-200 Clean 说明](docs/evaluation-dataset.md)；[Final-200 Dashboard（历史）](docs/evaluation-dashboard.html)
-只保留为历史归档。
-
-
-
-## 实验结果
-
-### Final-200 Clean：代码指标与 LLM-as-Judge
-
-同一份 1,347 条冻结 Rubric 用于三个 Actor；基础设施无效轨迹直接记为
-`not_judged`，但仍保留在 200 题固定分母中。正式运行完成 200 次 Curator 请求和
-592 次 Trajectory Judge 请求。
-
-| 模型 | 严格成功率 | 平均效用 | Judge 覆盖率 | 搜索 | 候选利用 | 证据核验 | 决策 | 终止效率 | hard 违反 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| SFT-e3 | 69.5% | 0.6024 | 99.0% | 1.793 | 1.783 | 1.662 | 1.545 | 1.697 | 64 |
-| 标准 GRPO step 450 | **71.0%** | **0.6279** | 98.5% | **1.822** | **1.797** | **1.695** | **1.548** | **1.726** | **48** |
-| Budget-only GRPO step 450 | 69.5% | 0.5935 | 98.5% | 1.802 | 1.746 | 1.635 | 1.508 | 1.660 | 76 |
-
-标准 GRPO 相对 SFT 净增 3 个严格成功（12 个转好、9 个回退），记录的 hard 违反少
-16 条、hard 未知多 18 条；McNemar `p=0.6636`，不足以声称显著提升。Budget-only GRPO 没有净成功增益，
-且五维轨迹质量均低于标准 GRPO，因此作为负向消融保留。三组最常见的主要错误都是
-`wrong_option`，说明当前瓶颈主要在规格选择与购买前证据核验，而不是能否完成搜索。
-
-### 本分支：预算感知候选记忆
-
-在未参与方法选择的 40 个 GRPO validation 任务上，使用 Qwen3.5-2B、temperature 0
-进行单次确定性配对评测：
-
-| 方法 | 严格成功 | 正常终局 | 非法动作终止 | Guard 拒绝 | 总输入 token |
-|---|---:|---:|---:|---:|---:|
-| Baseline | 0/40 | 10/40 | 28/40 | 155 | 2,334,845 |
-| Budget-only | 0/40 | 7/40 | 28/40 | 149 | 2,100,755 |
-| Memory-v4 | **2/40** | **11/40** | **21/40** | **105** | **1,867,081** |
-
-Memory-v4 相对 baseline 减少 20.0% 总输入 token 和 50 次 Guard 拒绝，并新增两个
-严格成功且没有配对成功回退。仅加入相同的 100,000-token 轨迹上限没有带来严格成功，
-说明观察到的收益不能只归因于提前截断。40 个任务仍然不足以证明统计显著性；配对
-bootstrap 的成功率差 95% 区间为 `[0.0, 12.5]` 个百分点。完整协议、任务边界和限制见
-[40-task 留出实验](docs/dev-holdout-40.md)。
-
-### 上游训练与评测结果
-
-当前 Final-200 Clean 上新增了一次贡献者复现实验；完整协议、失败分布和产物哈希见
-[评测更新记录](docs/evaluation-updates.md)：
-
-| 模型 | 严格成功率 | 购买成功率 | 完成终局率 | 平均 Reward |
-|---|---:|---:|---:|---:|
-| Qwen3.8-27B（BF16 权重，关闭思考） | 73.0% | 73.0% | 99.5% | 0.6354 |
-
-以下是历史 Final-200 的归档结果；当前横向比较统一使用 Final-200 Clean：
-
-| 模型 | 严格成功率 | 购买成功率 | 平均 Reward |
-|---|---:|---:|---:|
-| Qwen3.5-2B Baseline | 0.0% | 0.0% | -0.1105 |
-| LoRA SFT | 60.5% | 60.5% | 0.4729 |
-| GRPO step 100 | 62.0% | 62.5% | 0.5158 |
-
-SFT 带来了主要能力提升，让模型学会合法工具调用、长程搜索和正确终止；GRPO 在此
-基础上进一步减少错误购买、循环和非法动作。机器可读的训练配置、结果摘要和限制说明
-位于 [`experiments/`](experiments/)。
-
-## 训练硬件与耗时
-
-所有训练均使用单张 NVIDIA RTX 6000（96 GB）完成。
-
-### SFT LoRA 训练（448 条训练数据，3 个 epoch）
-
-| 阶段 | 耗时 | 峰值显存 |
-|---|---:|---:|
-| 单个 epoch（56 步） | ~62 分钟 | 89 GiB |
-| 完整 3 个 epoch | ~3 小时 | 89 GiB |
-
-### GRPO 训练（veRL 0.8，8 个环境 worker）
-
-| 步数范围 | 单步耗时 | 累计耗时 |
-|---|---:|---:|
-| step 0–24 | ~140 秒/步（含 Ray 启动开销） | ~56 分钟 |
-| step 20–30 稳定后 | ~73–120 秒/步 | ~2 分钟/步稳定态 |
-| 100 步（报告 checkpoint） | ~110 秒/步均值 | ~3–4 小时 |
-| 完整 500 步 | ~100 秒/步 | ~14 小时 |
-
-### 其他环节
-
-| 环节 | 耗时估算 |
-|---|---:|
-| Teacher 采集（2,498 条原始轨迹） | 取决于接口并发与限流 |
-| 200 任务评测（Base） | ~20 分钟 |
-| 200 任务评测（SFT/GRPO） | ~40–60 分钟 |
-| LLM Judge 评分 200 条轨迹 | ~30–60 分钟 |
-
-## 环境要求
-
-- Linux；
-- NVIDIA GPU 和兼容的 CUDA Driver；
-- [`uv`](https://docs.astral.sh/uv/)；
-- 大约 25 GB 可用磁盘空间，用于依赖、模型权重和运行产物；
-- SFT 配置按照 48 GB 显存设计；
-- GRPO 配置按照单张 96 GB GPU 验证。
-
-主训练环境使用 Python 3.12，ShopSimulator 使用隔离的 Python 3.10 环境。
-`scripts/setup.sh` 会通过 `uv` 创建并安装两套环境。
-
-## 快速开始
-
-以下命令都在仓库根目录执行。
-
-### 1. 安装
+### 安装与环境
 
 ```bash
 bash scripts/setup.sh
-```
-
-该脚本会安装固定版本的 SFT、veRL 和 vLLM 依赖，创建独立的 ShopSimulator
-环境，校验并解压商品数据，构建搜索索引，并应用经过版本和哈希检查的 veRL 补丁。
-
-### 2. 启动 ShopSimulator
-
-在第一个终端运行并保持服务：
-
-```bash
+uv sync --extra sft --extra grpo --extra sft-accelerated
 bash scripts/start_environment.sh
 ```
 
-服务默认监听 `http://127.0.0.1:5700`。
+环境服务默认监听 `http://127.0.0.1:5700`，需保持运行。
+在另一终端启动模型服务，再在评测终端执行评测；训练前停止独立模型服务以释放显存。
 
-### 3. 运行 Baseline
+### Baseline → SFT → GRPO → Evaluation
 
-在第二个终端启动基础模型：
-
-```bash
-bash scripts/serve_model.sh Qwen/Qwen3.5-2B
-```
-
-在第三个终端评估：
-
-```bash
-bash scripts/baseline.sh
-```
-
-开始训练前请停止模型服务，释放 GPU 显存。
-
-### 4. 训练并评估 SFT
-
-```bash
-bash scripts/sft.sh
-bash scripts/serve_model.sh outputs/models/sft-merged
-bash scripts/evaluate.sh sft
-```
-
-完成评估后再次停止模型服务。
-
-### 5. 训练 GRPO
-
-先只解析并打印最终命令，不启动 CUDA 或 Ray：
-
-```bash
-bash scripts/grpo.sh --dry-run
-```
-
-开始训练：
-
-```bash
-bash scripts/grpo.sh
-```
-
-根据验证集指标选择 Checkpoint，并导出 veRL Actor：
-
-```bash
-bash scripts/export_grpo.sh \
-  outputs/models/grpo/global_step_100/actor \
-  outputs/models/grpo-merged
-```
-
-该封装会把 veRL 导出的独立 `lora_adapter/` 真正合并进顶层模型，再生成可直接由
-vLLM 加载的 checkpoint。不要直接服务 `verl.model_merger` 的原始输出；其中顶层权重
-仍是 SFT base，GRPO 更新尚未应用。
-
-启动并评估导出的模型：
-
-```bash
-bash scripts/serve_model.sh outputs/models/grpo-merged
-bash scripts/evaluate.sh grpo
-```
-
-每次 `evaluate.sh` 完成后会自动生成 `outputs/evaluation/grpo/report.html`。对已有评测结果补生成报告：
-
-```bash
-bash scripts/report.sh grpo
-```
-
-批量生成所有单模型报告和综合比较报告：
-
-```bash
-bash scripts/report_all.sh
-```
-
-报告生成器按评测目录读取 `summary.json` 和 `trajectories.jsonl`，模型名与评测参数会从结果中自动填入，因此换模型或换评测标签不需要修改报告代码。
-
-Checkpoint、Rollout 和日志统一写入 Git 忽略的 `outputs/`。
-
-## Reward v3 简介
-
-Reward v3 是一个确定性的终局 Reward，不依赖另一个大模型进行主观判断：
-
-- 类别和预算是 Hard Gate；
-- 品牌、型号、核心功能、关键规格按照 `0.35 / 0.25 / 0.25 / 0.15` 加权；
-- 完全满足并命中目标商品得到 `1.0`；
-- 完全满足的替代商品得到 `0.55`；
-- 部分满足按照连续分数计算，最高 `0.25`；
-- 错误购买、过早放弃、重复循环和达到最大步数都会获得不同负奖励；
-- 证据不足时标记为 `reward_valid=false`，不会伪装成有效的零分样本。
-
-![Reward V3 decision rules](docs/images/reward-v3-decision-rules.png)
-
-完整公式、终止条件和证据要求见 [Reward v3 设计文档](docs/reward-v3.md)。
-
-## 仓库结构
-
-```text
-configs/                         当前 GRPO、AgentLoop 和工具配置
-data/
-  sft/                           800 条训练 + 200 条验证轨迹
-  grpo/                          JSONL 与 veRL Parquet 数据
-  evaluation/                    Final-200 Clean 留出任务
-docs/                            数据、SFT、GRPO、评估与 Reward 文档
-environments/ShopSimulator/      内嵌环境源码和商品数据
-experiments/
-  baseline/                      Baseline 配置与结果
-  sft/                           SFT 配置与结果
-  grpo/                          GRPO 配置与结果
-scripts/                         面向用户的薄入口脚本
-src/shopping_grpo/
-  collection/                    Teacher 轨迹验收与 SFT 数据构造
-  environment/                   环境客户端、动作、工具和 Observation
-  training/sft/                  SFT 数据渲染与 Mask
-  training/grpo/                 veRL AgentLoop、适配和动态采样
-  evaluation/                    硬检查、Rubric、轨迹 Judge 和指标汇总
-tests/                           核心单元、入口和 Wheel 安装检查
-```
-
-## 常用配置
-
-| 环境变量 | 默认值 |
+| 阶段 | 入口 / 说明 |
 |---|---|
-| `BASE_MODEL` | `Qwen/Qwen3.5-2B` |
-| `SHOPSIM_BASE_URL` | `http://127.0.0.1:5700` |
-| `LLM_BASE_URL` | `http://127.0.0.1:8000/v1` |
-| `SERVED_MODEL_NAME` | `shopping-agent` |
-| `SFT_ADAPTER_DIR` | `outputs/models/sft-lora` |
-| `SFT_MERGED_DIR` | `outputs/models/sft-merged` |
+| Baseline | `bash scripts/serve_model.sh Qwen/Qwen3.5-2B`；另一个终端执行 `bash scripts/baseline.sh` |
+| SFT | 下方显式 QLoRA 命令；配置与选择依据见 [SFT 检查点文档](docs/sft-checkpoint-selection.md) |
+| GRPO | `scripts/run_experiment.py` 的 `grpo_baseline` / `grpo_budget_only_v1`，详见 [GRPO 文档](docs/grpo.md) |
+| Evaluation | 服务正确合并后的模型；另一个终端执行 `bash scripts/evaluate.sh NAME` |
+| LLM-as-Judge | 基于已保存轨迹准备输入，再单独调用 API，见 [评测文档](docs/evaluation.md) |
 
-GRPO 的高级 Hydra 参数可以追加在 `--` 后：
-
-```bash
-bash scripts/grpo.sh -- \
-  trainer.total_training_steps=20 \
-  trainer.save_freq=10
-```
-
-SwanLab 默认关闭，需要时显式启用：
+本次 24GB SFT 使用显式参数；`scripts/sft.sh` 的普通 LoRA 默认入口并不自动启用 QLoRA/Liger：
 
 ```bash
-export SWANLAB_API_KEY=...
-bash scripts/grpo.sh --logger swanlab
+.venv/bin/python scripts/train_lora_sft.py \
+  --model Qwen/Qwen3.5-2B \
+  --train data/sft/train.jsonl \
+  --validation data/sft/validation.jsonl \
+  --output outputs/models/sft-lora-e3-24576 \
+  --max-length 24576 --epochs 3 \
+  --per-device-train-batch-size 1 --per-device-eval-batch-size 1 \
+  --gradient-accumulation-steps 8 --learning-rate 1e-4 \
+  --dtype bf16 --attention-implementation sdpa \
+  --gradient-checkpointing --qlora --liger-kernel
 ```
 
-## 文档导航
+训练后使用 `scripts/merge_lora_adapter.py` 合并 SFT Adapter，得到 GRPO 的起点。
+仅解析预算实验配置、不启动训练：
 
-- [简历表述与面试讲解](docs/resume-interview-guide.md)
-- [数据采集与数据来源](docs/data-collection.md)
-- [LoRA SFT](docs/sft.md)
-- [使用 veRL 进行 GRPO](docs/grpo.md)
-- [留出集评估](docs/evaluation.md)
-- [Final-200 Clean 测试集说明](docs/evaluation-dataset.md)
-- [Final-200 Benchmark Dashboard（历史）](docs/evaluation-dashboard.html)
-- [Reward v3 设计](docs/reward-v3.md)
-- [可审计实验结果](experiments/comparison.md)
+```bash
+.venv/bin/python scripts/run_experiment.py grpo_budget_only_v1 \
+  --model outputs/models/sft-merged-e3-24576 --dry-run
+```
 
-## 后续改进计划
+正式训练前应在验证集上确定检查点选择规则，并为候选检查点预留磁盘。
+GRPO 导出必须使用 [scripts/export_grpo.sh](scripts/export_grpo.sh)，
+将独立 LoRA Adapter 合并到顶层权重；仅运行 veRL 原始 model merger 的中间产物
+不能视作可直接评测的 GRPO 模型。
 
-为进一步提升模型在长程购物任务中的规划、工具调用与约束满足能力，后续将从以下几个方面推进项目：
+## 文档与代码
 
-- **扩大模型规模**：在现有实验基础上，训练更大规模的 `Qwen3.5-9B` 模型，评估模型规模对长程任务稳定性和最终成功率的影响。
-- **升级 Teacher 模型与轨迹采集方案**：不再依赖单一 Teacher 模型，计划采用 `Qwen3.8 Flash`、`GLM-5.3-Flash` 和 `DeepSeek-V4-Flash-0731` 的混合方案进行轨迹收集，以提升训练数据的覆盖范围、行为多样性与质量上限。
-- **扩大独立验证集**：增加验证任务数量和任务类型，覆盖更多商品类别、约束组合与交互路径，从而提高实验结论的统计可靠性和泛化评估能力。
-- **引入更细粒度的信用分配**：针对长程交互中终局奖励稀疏、动作贡献难以区分的问题，采用更细粒度的信用分配方法，为关键中间步骤提供更有效的训练信号。
+| 内容 | 入口 |
+|---|---|
+| 项目状态与贡献边界 | [PROJECT.md](PROJECT.md) |
+| 数据来源 / 测试隔离 | [数据来源](docs/data-collection.md) · [Final-200 Clean](docs/evaluation-dataset.md) |
+| SFT / GRPO | [SFT 实测配置](docs/sft-checkpoint-selection.md) · [GRPO 训练与导出](docs/grpo.md) |
+| 消融与评测 | [候选记忆消融](docs/sft-e1-ablation.md) · [评测协议](docs/evaluation.md) |
+| 奖励 | [Reward v3](docs/reward-v3.md) |
+| 核心实现 | [训练](src/shopping_grpo/training/) · [候选记忆](src/shopping_grpo/memory/) · [评测](src/shopping_grpo/evaluation/) |
+| 验证 | [tests/](tests/) |
+| 正式结果 | [聚合数据与哈希](experiments/final200-comparison.json) |
 
-## Star History
+仓库中保留的上游实验材料不属于本分支成绩；本页的比较仅对应上方三组运行。
+可复现配置与产物身份不意味着跨硬件、依赖版本或重复运行一定得到逐位相同结果。
 
-<a href="https://www.star-history.com/?repos=YYHDBL%2Fshopping-grpo-longhorizon&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=YYHDBL/shopping-grpo-longhorizon&type=date&theme=dark&legend=top-left&sealed_token=wgQ1K2TiIB2luvZFJ54oMEhME-cxYmFv_wNoNXnT7lMZHsuQUy7NThQAG2VwpEeiUBoRxd09ASiB60cvvBaEvqVqyv49wYKZSF2H_Jft3Iq1ZZ0c5Sk2SQQejxHxMQwayMTRroOh5JhcWgXk6w8HHwjP6UgTquINRr40c7XysMi_j2BksVwqOWSIz8Ny" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=YYHDBL/shopping-grpo-longhorizon&type=date&legend=top-left&sealed_token=wgQ1K2TiIB2luvZFJ54oMEhME-cxYmFv_wNoNXnT7lMZHsuQUy7NThQAG2VwpEeiUBoRxd09ASiB60cvvBaEvqVqyv49wYKZSF2H_Jft3Iq1ZZ0c5Sk2SQQejxHxMQwayMTRroOh5JhcWgXk6w8HHwjP6UgTquINRr40c7XysMi_j2BksVwqOWSIz8Ny" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=YYHDBL/shopping-grpo-longhorizon&type=date&legend=top-left&sealed_token=wgQ1K2TiIB2luvZFJ54oMEhME-cxYmFv_wNoNXnT7lMZHsuQUy7NThQAG2VwpEeiUBoRxd09ASiB60cvvBaEvqVqyv49wYKZSF2H_Jft3Iq1ZZ0c5Sk2SQQejxHxMQwayMTRroOh5JhcWgXk6w8HHwjP6UgTquINRr40c7XysMi_j2BksVwqOWSIz8Ny" />
- </picture>
-</a>
+## 来源与许可状态
 
-## 引用与致谢
-
-本项目建立在
-[ShopSimulator 论文](https://arxiv.org/pdf/2601.18225)及其开源环境、
-[veRL](https://github.com/verl-project/verl) 和
-[Qwen](https://github.com/QwenLM/Qwen3) 之上。
-
-评测协议和 Benchmark 构建还参考了
-[VitaBench: Benchmarking LLM Agents with Versatile Interactive Tasks in Real-world Applications](https://arxiv.org/pdf/2509.26490)
-以及
-[EComAgentBench: Benchmarking Shopping Agents on Long-Horizon Tasks with Distributed Hidden Intent](https://arxiv.org/pdf/2606.17698)。
-
-仓库结构和教程呈现参考了
-[qiqihezh/agentic-grpo-longhorizon](https://github.com/qiqihezh/agentic-grpo-longhorizon)。
-感谢 [OpenCode Go 套餐](https://dev.opencode.ai/go) 对开发工作的支持。
-
-### Contributors
-
-<a href="https://github.com/Guochangwei917">
-  <img src="https://github.com/Guochangwei917.png?size=80" width="80px;" alt="Guochangwei917"/>
-</a>
+- 基于 [YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)，
+  固定提交 `449bba2686a6ff07327cb3ea77e5f0f91ebb4239`。
+- 感谢 [ShopSimulator](https://github.com/ShopAgent-Team/ShopSimulator)、
+  [veRL](https://github.com/verl-project/verl)、[Qwen](https://github.com/QwenLM/Qwen3)、
+  [PEFT](https://github.com/huggingface/peft) 与 [Liger Kernel](https://github.com/linkedin/Liger-Kernel)。
+- 该固定来源提交未附 LICENSE/COPYING；详见 [UPSTREAM.json](UPSTREAM.json)。
+  本分支保留来源关系，不为上游代码或嵌入数据擅自添加新的开源许可。

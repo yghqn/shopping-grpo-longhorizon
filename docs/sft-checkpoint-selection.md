@@ -44,7 +44,7 @@ Budget-only 保留完全相同的 19 个严格成功任务，同时减少 566,66
 - GRPO 初始策略：`outputs/models/sft-merged-e3-24576`
 - 主实验：`grpo_budget_only_v1`
 - Candidate Memory：默认关闭，`grpo_budget_memory_v1` 仅保留为负向消融
-- Final-200 Clean：待 GRPO 配置冻结后执行
+- Final-200 Clean：已在配置冻结后完成，SFT / 标准 GRPO / Budget-only GRPO 分别为 139 / 142 / 139 个严格成功；见[正式结果摘要](../experiments/final200-comparison.json)
 
 Candidate Memory 的失败分析见 [`sft-e1-ablation.md`](sft-e1-ablation.md)：在 SFT-e1 上从 18/40 降到 14/40，说明简单的搜索排名/已核验优先记忆会干扰已学到的商品与规格决策。
 

@@ -1,0 +1,330 @@
+{
+  "schema_version": "shopping-final200-comparison-v1",
+  "scope": "Completed experiments from this branch; not upstream results or a multi-seed causal study.",
+  "runtime_contract": {
+    "environment": "2.1",
+    "reward": "3",
+    "observation": "2",
+    "tool_schema": "2"
+  },
+  "benchmark": {
+    "path": "data/evaluation/tasks.jsonl",
+    "sha256": "d99112a20ef47534c27a32e4b38229bf048dcc6b06fef2e3e919aac3093662f5",
+    "fixed_denominator_per_model": 200,
+    "strict_success_definition": "complete gold_purchase terminal result with reward_valid=true"
+  },
+  "evaluation_protocol": {
+    "benchmark": "data/evaluation/tasks.jsonl",
+    "model": "shopping-agent",
+    "reward_contract": "shopsimulator-reward-v3",
+    "max_steps": 35,
+    "max_tokens": 512,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "context_window": 24576,
+    "context_safety_margin": 512,
+    "context_compaction": false,
+    "observation_token_budget": 1536,
+    "observation_detail_token_budget": 4096,
+    "observation_generic_token_budget": 768,
+    "observation_search_top_k": 20,
+    "candidate_memory": false,
+    "candidate_memory_token_budget": 1024,
+    "cumulative_input_token_budget": 0
+  },
+  "llm_judge": {
+    "curator": {
+      "model": "deepseek-flash",
+      "prompt_version": "rubric-curator-v1-draft-r6",
+      "thinking": false
+    },
+    "judge": {
+      "model": "deepseek-v4-pro",
+      "prompt_version": "trajectory-judge-v1-draft-r5",
+      "thinking": false
+    },
+    "rubric_tasks": 200,
+    "rubric_file_sha256": "7d3463058ecfa27d7bb8433cfe3973bbfbf9525ffcc6748ee6f6558aa2b89040",
+    "curator_requests": 200,
+    "judge_requests": 592,
+    "not_judged_trajectories": 8,
+    "dimension_mean_denominator": "valid Judge outputs; coverage reported separately",
+    "rubric_count": 1347
+  },
+  "models": {
+    "sft-e3": {
+      "checkpoint": "epoch_3",
+      "metrics": {
+        "completed_tasks": 200,
+        "strict_successes": 139,
+        "strict_success_rate": 0.695,
+        "done_rate": 0.985,
+        "mean_terminal_utility": 0.6024132077991453,
+        "mean_weighted_score": 0.7749842414529914,
+        "average_steps": 9.825,
+        "reward_type_counts": {
+          "gold_purchase": 139,
+          "max_steps": 2,
+          "partial_alternative_purchase": 29,
+          "repeat_loop": 25,
+          "reward_unverifiable": 1,
+          "unknown": 3,
+          "wrong_purchase": 1
+        },
+        "status_counts": {
+          "done": 197,
+          "error": 2,
+          "invalid_action_limit": 1
+        }
+      },
+      "context_metrics": {
+        "guard_rejections": 23,
+        "total_context_input_tokens": 12081725,
+        "context_overflow_tasks": 2,
+        "cumulative_input_budget_exhausted_tasks": 0
+      },
+      "judge": {
+        "coverage_rate": 0.99,
+        "status_counts": {
+          "not_judged": 2,
+          "valid": 198
+        },
+        "dimension_means_among_valid_judges": {
+          "candidate_utilization": 1.7828282828282829,
+          "decision_quality": 1.5454545454545454,
+          "evidence_verification": 1.6616161616161615,
+          "search_strategy": 1.792929292929293,
+          "termination_efficiency": 1.696969696969697
+        },
+        "hard_constraint_status_counts": {
+          "satisfied": 1099,
+          "unknown": 47,
+          "violated": 64
+        },
+        "primary_error_counts": {
+          "budget_violation": 1,
+          "critical_evidence_missing": 6,
+          "final_price_unverified": 2,
+          "overexploration_after_convergence": 1,
+          "premature_abstain": 7,
+          "premature_purchase": 1,
+          "requirement_violation": 2,
+          "search_core_requirement_missed": 1,
+          "search_ineffective_reformulation": 1,
+          "search_mechanical_repeat": 3,
+          "wrong_category": 1,
+          "wrong_option": 29
+        }
+      },
+      "source_artifacts": {
+        "summary": {
+          "path": "outputs/evaluation/sft-e3-final200-clean/summary.json",
+          "sha256": "09e5fea43b6776ad8bb96551df96babf338b97e8c750429174205170b17282ba"
+        },
+        "trajectories": {
+          "path": "outputs/evaluation/sft-e3-final200-clean/trajectories.jsonl",
+          "sha256": "a23d71bbd2a7000568d03822c88500e46c5951accc87e429a5c4007714b6b576"
+        },
+        "judge_summary": {
+          "path": "outputs/evaluation/llm-judge-final200-v1/sft-e3/evaluation_summary.json",
+          "sha256": "858954e692c63f3455e12aec99a0f4cd157a82ace28b893b5bb555fbc98cd340"
+        }
+      },
+      "model_weight_sha256_from_export_manifest": "aeb527ebaa56c509afe780f978fcc647d61fa8105a57b463ab8471012465dd2b"
+    },
+    "grpo-standard": {
+      "checkpoint": "step_450",
+      "metrics": {
+        "completed_tasks": 200,
+        "strict_successes": 142,
+        "strict_success_rate": 0.71,
+        "done_rate": 0.975,
+        "mean_terminal_utility": 0.6278929945054945,
+        "mean_weighted_score": 0.7912870879120879,
+        "average_steps": 10.095,
+        "reward_type_counts": {
+          "gold_purchase": 142,
+          "max_steps": 5,
+          "partial_alternative_purchase": 27,
+          "repeat_loop": 15,
+          "reward_unverifiable": 2,
+          "unknown": 5,
+          "wrong_purchase": 4
+        },
+        "status_counts": {
+          "done": 195,
+          "error": 3,
+          "invalid_action_limit": 2
+        }
+      },
+      "context_metrics": {
+        "guard_rejections": 52,
+        "total_context_input_tokens": 13446494,
+        "context_overflow_tasks": 3,
+        "cumulative_input_budget_exhausted_tasks": 0
+      },
+      "judge": {
+        "coverage_rate": 0.985,
+        "status_counts": {
+          "not_judged": 3,
+          "valid": 197
+        },
+        "dimension_means_among_valid_judges": {
+          "candidate_utilization": 1.7969543147208122,
+          "decision_quality": 1.5482233502538072,
+          "evidence_verification": 1.6954314720812182,
+          "search_strategy": 1.8223350253807107,
+          "termination_efficiency": 1.7258883248730965
+        },
+        "hard_constraint_status_counts": {
+          "satisfied": 1106,
+          "unknown": 65,
+          "violated": 48
+        },
+        "primary_error_counts": {
+          "budget_violation": 7,
+          "critical_evidence_missing": 5,
+          "illegal_action": 1,
+          "premature_abstain": 7,
+          "requirement_violation": 4,
+          "search_core_requirement_missed": 2,
+          "wrong_category": 1,
+          "wrong_option": 26
+        }
+      },
+      "source_artifacts": {
+        "summary": {
+          "path": "outputs/evaluation/grpo-standard-step450-final200-clean-v2/summary.json",
+          "sha256": "a5edd64a50ead0575f53fd44654900969500a7ba3424229023bd0aab32f66602"
+        },
+        "trajectories": {
+          "path": "outputs/evaluation/grpo-standard-step450-final200-clean-v2/trajectories.jsonl",
+          "sha256": "22af20f759b4cfa1b85fa1ac4d864a4d221fcc319d4d26c20bdf27e4d4d516fc"
+        },
+        "judge_summary": {
+          "path": "outputs/evaluation/llm-judge-final200-v1/grpo-standard/evaluation_summary.json",
+          "sha256": "53e5221240b0c4b19895a3d92817708443b166a7b374549ec1615d0b58bd050a"
+        }
+      },
+      "model_weight_sha256_from_export_manifest": "340b63e03407c8aefe34626d585d852a41fd90daca7387b21b683e4ccec04b55"
+    },
+    "grpo-budget": {
+      "checkpoint": "step_450",
+      "metrics": {
+        "completed_tasks": 200,
+        "strict_successes": 139,
+        "strict_success_rate": 0.695,
+        "done_rate": 0.98,
+        "mean_terminal_utility": 0.5935084458943833,
+        "mean_weighted_score": 0.7681447268009768,
+        "average_steps": 9.945,
+        "reward_type_counts": {
+          "gold_purchase": 139,
+          "max_steps": 4,
+          "partial_alternative_purchase": 27,
+          "repeat_loop": 20,
+          "reward_unverifiable": 1,
+          "unknown": 4,
+          "wrong_purchase": 5
+        },
+        "status_counts": {
+          "done": 196,
+          "error": 3,
+          "invalid_action_limit": 1
+        }
+      },
+      "context_metrics": {
+        "guard_rejections": 21,
+        "total_context_input_tokens": 12938476,
+        "context_overflow_tasks": 3,
+        "cumulative_input_budget_exhausted_tasks": 0
+      },
+      "judge": {
+        "coverage_rate": 0.985,
+        "status_counts": {
+          "not_judged": 3,
+          "valid": 197
+        },
+        "dimension_means_among_valid_judges": {
+          "candidate_utilization": 1.7461928934010151,
+          "decision_quality": 1.5076142131979695,
+          "evidence_verification": 1.634517766497462,
+          "search_strategy": 1.8020304568527918,
+          "termination_efficiency": 1.6598984771573604
+        },
+        "hard_constraint_status_counts": {
+          "satisfied": 1073,
+          "unknown": 66,
+          "violated": 76
+        },
+        "primary_error_counts": {
+          "budget_violation": 4,
+          "critical_evidence_missing": 6,
+          "premature_abstain": 7,
+          "premature_purchase": 4,
+          "requirement_violation": 4,
+          "search_core_requirement_missed": 2,
+          "search_ineffective_reformulation": 1,
+          "search_mechanical_repeat": 4,
+          "wrong_category": 1,
+          "wrong_option": 24
+        }
+      },
+      "source_artifacts": {
+        "summary": {
+          "path": "outputs/evaluation/grpo-budget-step450-final200-clean-v2/summary.json",
+          "sha256": "0025271cc60bcfdbb07c8d62a1983bfa6981e8ada7655dd4a9fbc88c1a8fde69"
+        },
+        "trajectories": {
+          "path": "outputs/evaluation/grpo-budget-step450-final200-clean-v2/trajectories.jsonl",
+          "sha256": "e63890246cc7245d6a20ddc665118e8d4e37fcc68bfea35427896e7e40952bd9"
+        },
+        "judge_summary": {
+          "path": "outputs/evaluation/llm-judge-final200-v1/grpo-budget/evaluation_summary.json",
+          "sha256": "36ef241b441ad16305c29e0c3ba4e281cd8799ece558205b72fe6edeb26c51dc"
+        }
+      },
+      "model_weight_sha256_from_export_manifest": "b66ff886e03f7829042cb8dfdd2dae307838e6102f72b8e1dc960f1d1bc19e5e"
+    }
+  },
+  "paired_comparisons": {
+    "grpo-standard_minus_sft-e3": {
+      "gained": 12,
+      "lost": 9,
+      "net_successes": 3,
+      "success_rate_delta_percentage_points": 1.5,
+      "exact_two_sided_mcnemar_p": 0.6636238098144531,
+      "mean_terminal_utility_delta": 0.025479786706349206,
+      "input_token_change_percent": 11.296143555659487
+    },
+    "grpo-budget_minus_sft-e3": {
+      "gained": 7,
+      "lost": 7,
+      "net_successes": 0,
+      "success_rate_delta_percentage_points": 0.0,
+      "exact_two_sided_mcnemar_p": 1.0,
+      "mean_terminal_utility_delta": -0.00890476190476197,
+      "input_token_change_percent": 7.091296979528994
+    },
+    "grpo-budget_minus_grpo-standard": {
+      "gained": 8,
+      "lost": 11,
+      "net_successes": -3,
+      "success_rate_delta_percentage_points": -1.5,
+      "exact_two_sided_mcnemar_p": 0.6476058959960938,
+      "mean_terminal_utility_delta": -0.034384548611111176,
+      "input_token_change_percent": -3.7780703282208727
+    }
+  },
+  "limitations": [
+    "Standard GRPO step 300 had the highest logged validation reward (0.4667099368572235), but its actor weights were removed by retention. Step 450 (validation reward 0.4026110150665045) was selected among the remaining candidates.",
+    "Budget GRPO used staged resumes and a different scheduling history from standard GRPO.",
+    "No multi-seed replication or independent human calibration of Judge scores was completed.",
+    "Earlier evaluations of GRPO exports without the merged adapter are excluded."
+  ],
+  "artifact_availability": "Source paths identify local saved artifacts; full trajectories, logs and model weights are not included in Git.",
+  "model_hash_provenance": {
+    "manifest_path": "outputs/cloud-runs/2026-10-03-final-model-manifest.sha256",
+    "manifest_sha256": "849635df1fc5792e106bde016343c2812f6e6dcedb4b56db78eacc76293c6db8"
+  }
+}
