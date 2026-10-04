@@ -6,7 +6,7 @@
 
 ## 简历项目名称
 
-**Budget-Aware Shopping Agent｜长程购物智能体后训练与推理成本优化**
+**Budget-Aware Shopping Agent｜长程购物智能体后训练与推理成本优化｜开源复现与二次开发（个人）**
 
 ## 推荐简历描述
 
